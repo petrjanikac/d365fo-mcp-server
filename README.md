@@ -67,7 +67,7 @@ the right tool automatically.
 
 | Component | Version |
 |-----------|---------|
-| Node.js | 22 LTS or newer |
+| Node.js | 24 LTS or newer |
 | Visual Studio 2022 | 17.14 or newer |
 | GitHub Copilot | Active subscription |
 | D365FO dev environment | Local VM or Azure |
