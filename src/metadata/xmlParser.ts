@@ -256,13 +256,41 @@ export class XppMetadataParser {
 
   private parseIndexFields(fieldsStr?: string | any): string[] {
     if (!fieldsStr) return [];
+
+    if (fieldsStr.AxTableIndexField) {
+      const indexFields = Array.isArray(fieldsStr.AxTableIndexField)
+        ? fieldsStr.AxTableIndexField
+        : [fieldsStr.AxTableIndexField];
+
+      return indexFields
+        .map((field: any) => field?.DataField || field?.Name || '')
+        .filter((field: string) => !!field);
+    }
+
     if (typeof fieldsStr !== 'string') {
       // Handle case where xml2js returns an object or array
       if (Array.isArray(fieldsStr)) {
-        return fieldsStr.map(f => String(f)).filter(Boolean);
+        return fieldsStr
+          .map((field: any) => {
+            if (typeof field === 'string') {
+              return field;
+            }
+
+            if (field?.DataField) {
+              return field.DataField;
+            }
+
+            if (field?.Name) {
+              return field.Name;
+            }
+
+            return '';
+          })
+          .filter(Boolean);
       }
       return [];
     }
+
     return fieldsStr.split(',').map(f => f.trim()).filter(Boolean);
   }
 
@@ -280,10 +308,15 @@ export class XppMetadataParser {
   private parseConstraints(constraintsData: any): any[] {
     if (!constraintsData) return [];
 
-    const constraints = Array.isArray(constraintsData) ? constraintsData : [constraintsData];
-    return constraints.map(c => ({
-      field: c.Field || '',
-      relatedField: c.RelatedField || '',
+    const constraintNodes = constraintsData.AxTableRelationConstraint
+      ? (Array.isArray(constraintsData.AxTableRelationConstraint)
+        ? constraintsData.AxTableRelationConstraint
+        : [constraintsData.AxTableRelationConstraint])
+      : (Array.isArray(constraintsData) ? constraintsData : [constraintsData]);
+
+    return constraintNodes.map((constraint: any) => ({
+      field: constraint.Field || '',
+      relatedField: constraint.RelatedField || '',
     }));
   }
 
