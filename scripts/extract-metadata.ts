@@ -65,7 +65,56 @@ interface ExtractionStats {
   errors: number;
 }
 
+interface ModelWorkItem {
+  packageName: string;
+  modelName: string;
+  modelPath: string;
+  expectedXmlFiles: number;
+}
+
+function formatDuration(ms: number): string {
+  if (ms < 1000) return `${ms}ms`;
+  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
+  const minutes = Math.floor(ms / 60000);
+  const seconds = ((ms % 60000) / 1000).toFixed(1);
+  return `${minutes}m ${seconds}s`;
+}
+
+function formatPercent(current: number, total: number): string {
+  if (total <= 0) return '0.0%';
+  return `${((current / total) * 100).toFixed(1)}%`;
+}
+
+async function countXmlFilesInDirectory(dirPath: string): Promise<number> {
+  if (!fsSync.existsSync(dirPath)) {
+    return 0;
+  }
+
+  const files = await fs.readdir(dirPath);
+  return files.filter(file => file.endsWith('.xml')).length;
+}
+
+async function countModelXmlFiles(modelPath: string): Promise<number> {
+  let total = 0;
+  const sourceDirs = [
+    'AxClass', 'axclass',
+    'AxTable', 'axtable',
+    'AxForm', 'axform',
+    'AxQuery', 'axquery',
+    'AxView', 'axview',
+    'AxDataEntityView', 'axdataentityview',
+    'AxEnum', 'axenum',
+  ];
+
+  for (const sourceDir of sourceDirs) {
+    total += await countXmlFilesInDirectory(path.join(modelPath, sourceDir));
+  }
+
+  return total;
+}
+
 async function extractMetadata() {
+  const extractionStart = Date.now();
   console.log('🔍 X++ Metadata Extraction');
   console.log(`📂 Source: ${PACKAGES_PATH}`);
   console.log(`📁 Output: ${OUTPUT_PATH}`);
@@ -176,12 +225,12 @@ async function extractMetadata() {
     }
   }
 
-  // Process each package/model
-  for (const packageName of packagesToProcess) {
-    console.log(`\n📦 Processing package: ${packageName}`);
+  const modelWorkItems: ModelWorkItem[] = [];
 
+  // Build model worklist first to enable accurate progress percentages
+  for (const packageName of packagesToProcess) {
     const packagePath = path.join(PACKAGES_PATH, packageName);
-    
+
     try {
       await fs.access(packagePath);
     } catch {
@@ -211,7 +260,7 @@ async function extractMetadata() {
       }
 
       const modelPath = path.join(packagePath, modelName);
-      
+
       // Check if this directory contains X++ metadata (has AxClass, AxTable, etc.)
       // Support both uppercase and lowercase directory names (Linux case-sensitivity)
       const hasAxClass = await fs.access(path.join(modelPath, 'AxClass')).then(() => true)
@@ -230,29 +279,64 @@ async function extractMetadata() {
         continue;
       }
 
-      console.log(`   📂 Model: ${modelName}`);
-
-      // Extract classes
-      await extractClasses(parser, modelPath, modelName, stats);
-
-      // Extract tables
-      await extractTables(parser, modelPath, modelName, stats);
-
-      // Extract forms
-      await extractForms(parser, modelPath, modelName, stats);
-
-      // Extract queries
-      await extractQueries(parser, modelPath, modelName, stats);
-
-      // Extract views
-      await extractViews(parser, modelPath, modelName, stats);
-
-      // Extract enums
-      await extractEnums(parser, modelPath, modelName, stats);
+      const expectedXmlFiles = await countModelXmlFiles(modelPath);
+      modelWorkItems.push({ packageName, modelName, modelPath, expectedXmlFiles });
     }
   }
 
+  const totalModels = modelWorkItems.length;
+  const totalExpectedFiles = modelWorkItems.reduce((sum, item) => sum + item.expectedXmlFiles, 0);
+  console.log(`📍 Planned work: ${totalModels} models, ${totalExpectedFiles} XML files`);
+
+  // Process each model with progress tracking
+  let currentPackage = '';
+  let processedModels = 0;
+  let cumulativeModelDuration = 0;
+
+  for (const modelItem of modelWorkItems) {
+    if (currentPackage !== modelItem.packageName) {
+      currentPackage = modelItem.packageName;
+      console.log(`\n📦 Processing package: ${currentPackage}`);
+    }
+
+    const modelStart = Date.now();
+    console.log(`   📂 Model: ${modelItem.modelName} (${modelItem.expectedXmlFiles} XML files)`);
+
+    // Extract classes
+    await extractClasses(parser, modelItem.modelPath, modelItem.modelName, stats);
+
+    // Extract tables
+    await extractTables(parser, modelItem.modelPath, modelItem.modelName, stats);
+
+    // Extract forms
+    await extractForms(parser, modelItem.modelPath, modelItem.modelName, stats);
+
+    // Extract queries
+    await extractQueries(parser, modelItem.modelPath, modelItem.modelName, stats);
+
+    // Extract views
+    await extractViews(parser, modelItem.modelPath, modelItem.modelName, stats);
+
+    // Extract enums
+    await extractEnums(parser, modelItem.modelPath, modelItem.modelName, stats);
+
+    const modelDuration = Date.now() - modelStart;
+    cumulativeModelDuration += modelDuration;
+    processedModels++;
+
+    const elapsed = Date.now() - extractionStart;
+    const avgModelDuration = processedModels > 0 ? cumulativeModelDuration / processedModels : 0;
+    const avgFileDuration = stats.totalFiles > 0 ? elapsed / stats.totalFiles : 0;
+    console.log(
+      `   ⏱️  Model done in ${formatDuration(modelDuration)} | Progress: ${formatPercent(processedModels, totalModels)} (${processedModels}/${totalModels} models), ${formatPercent(stats.totalFiles, totalExpectedFiles)} (${stats.totalFiles}/${totalExpectedFiles} files) | Avg: ${formatDuration(avgModelDuration)}/model, ${formatDuration(avgFileDuration)}/file`
+    );
+  }
+
   console.log('\n✅ Extraction complete!');
+  const totalDuration = Date.now() - extractionStart;
+  const averagePerFile = stats.totalFiles > 0 ? totalDuration / stats.totalFiles : 0;
+  const averagePerModel = processedModels > 0 ? cumulativeModelDuration / processedModels : 0;
+  console.log(`⏱️  Duration: ${formatDuration(totalDuration)} (avg ${formatDuration(averagePerModel)}/model, ${formatDuration(averagePerFile)}/file)`);
   console.log(`📊 Statistics:`);
   console.log(`   Total files: ${stats.totalFiles}`);
   console.log(`   Classes: ${stats.classes}`);
@@ -288,6 +372,7 @@ async function extractClasses(
 
   const files = await fs.readdir(classesPath);
   const xmlFiles = files.filter(f => f.endsWith('.xml'));
+  const startedAt = Date.now();
 
   console.log(`   Classes: ${xmlFiles.length} files`);
 
@@ -316,6 +401,10 @@ async function extractClasses(
       stats.errors++;
     }
   }
+
+  const duration = Date.now() - startedAt;
+  const avgPerFile = xmlFiles.length > 0 ? duration / xmlFiles.length : 0;
+  console.log(`   ⏱️  Classes done in ${formatDuration(duration)} (avg ${formatDuration(avgPerFile)}/file)`);
 }
 
 async function extractTables(
@@ -341,6 +430,7 @@ async function extractTables(
 
   const files = await fs.readdir(tablesPath);
   const xmlFiles = files.filter(f => f.endsWith('.xml'));
+  const startedAt = Date.now();
 
   console.log(`   Tables: ${xmlFiles.length} files`);
 
@@ -369,6 +459,10 @@ async function extractTables(
       stats.errors++;
     }
   }
+
+  const duration = Date.now() - startedAt;
+  const avgPerFile = xmlFiles.length > 0 ? duration / xmlFiles.length : 0;
+  console.log(`   ⏱️  Tables done in ${formatDuration(duration)} (avg ${formatDuration(avgPerFile)}/file)`);
 }
 
 async function extractForms(
@@ -394,6 +488,7 @@ async function extractForms(
 
   const files = await fs.readdir(formsPath);
   const xmlFiles = files.filter(f => f.endsWith('.xml'));
+  const startedAt = Date.now();
 
   console.log(`   Forms: ${xmlFiles.length} files`);
 
@@ -422,6 +517,10 @@ async function extractForms(
       stats.errors++;
     }
   }
+
+  const duration = Date.now() - startedAt;
+  const avgPerFile = xmlFiles.length > 0 ? duration / xmlFiles.length : 0;
+  console.log(`   ⏱️  Forms done in ${formatDuration(duration)} (avg ${formatDuration(avgPerFile)}/file)`);
 }
 
 async function extractQueries(
@@ -447,6 +546,7 @@ async function extractQueries(
 
   const files = await fs.readdir(queriesPath);
   const xmlFiles = files.filter(f => f.endsWith('.xml'));
+  const startedAt = Date.now();
 
   console.log(`   Queries: ${xmlFiles.length} files`);
 
@@ -475,6 +575,10 @@ async function extractQueries(
       stats.errors++;
     }
   }
+
+  const duration = Date.now() - startedAt;
+  const avgPerFile = xmlFiles.length > 0 ? duration / xmlFiles.length : 0;
+  console.log(`   ⏱️  Queries done in ${formatDuration(duration)} (avg ${formatDuration(avgPerFile)}/file)`);
 }
 
 async function extractViews(
@@ -497,6 +601,7 @@ async function extractViews(
   }
 
   let totalXmlFiles = 0;
+  const startedAt = Date.now();
 
   for (const sourceDir of sourceDirs) {
     const files = await fs.readdir(sourceDir);
@@ -533,7 +638,10 @@ async function extractViews(
     }
   }
 
+  const duration = Date.now() - startedAt;
+  const avgPerFile = totalXmlFiles > 0 ? duration / totalXmlFiles : 0;
   console.log(`   Views/Data entities: ${totalXmlFiles} files`);
+  console.log(`   ⏱️  Views/Data entities done in ${formatDuration(duration)} (avg ${formatDuration(avgPerFile)}/file)`);
 }
 
 async function extractEnums(
@@ -559,6 +667,7 @@ async function extractEnums(
 
   const files = await fs.readdir(enumsPath);
   const xmlFiles = files.filter(f => f.endsWith('.xml'));
+  const startedAt = Date.now();
 
   console.log(`   Enums: ${xmlFiles.length} files`);
 
@@ -580,6 +689,10 @@ async function extractEnums(
       stats.errors++;
     }
   }
+
+  const duration = Date.now() - startedAt;
+  const avgPerFile = xmlFiles.length > 0 ? duration / xmlFiles.length : 0;
+  console.log(`   ⏱️  Enums done in ${formatDuration(duration)} (avg ${formatDuration(avgPerFile)}/file)`);
 }
 
 // Run extraction
