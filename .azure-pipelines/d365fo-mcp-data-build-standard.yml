@@ -36,7 +36,7 @@ variables:
 
 stages:
   # ============================================================================
-  # Single Stage: Download, Extract, and Upload
+  # Single Stage: Download, Extract, Build Database with Labels, and Upload
   # ============================================================================
   - stage: ExtractAndUpload
     displayName: 'Extract Standard Metadata and Upload to Blob'
@@ -131,12 +131,12 @@ stages:
           # ========== Step 7: Upload Database to Blob Storage ==========
           
           - script: npm run blob-manager upload-database
-            displayName: 'Upload compiled database to Azure Blob'
+            displayName: 'Upload labels database to Azure Blob'
             workingDirectory: '$(MCP_SERVER_PATH)'
             env:
               AZURE_STORAGE_CONNECTION_STRING: $(AZURE_STORAGE_CONNECTION_STRING)
               BLOB_CONTAINER_NAME: $(BLOB_CONTAINER_NAME)
-              DB_PATH: $(DB_PATH)
+              DB_PATH: $(LABELS_DB_PATH)
 
           # Restart App Service
           - task: AzureAppServiceManage@0
