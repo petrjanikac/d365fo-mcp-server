@@ -17,6 +17,8 @@ const __dirname = path.dirname(__filename);
 const PACKAGES_PATH = process.env.PACKAGES_PATH || 'C:\\AOSService\\PackagesLocalDirectory';
 const OUTPUT_PATH = process.env.METADATA_PATH || './extracted-metadata';
 const CUSTOM_MODELS_PATH = process.env.CUSTOM_MODELS_PATH; // Optional: separate path for custom extensions
+const CUSTOM_PACKAGES_PATH = process.env.CUSTOM_PACKAGES_PATH;
+const MICROSOFT_PACKAGES_PATH = process.env.MICROSOFT_PACKAGES_PATH;
 
 // Custom models defined in .env - these are YOUR extensions
 const CUSTOM_MODELS = getCustomModels();
@@ -129,7 +131,22 @@ async function countModelXmlFiles(modelPath: string): Promise<number> {
 async function extractMetadata() {
   const extractionStart = Date.now();
   console.log('🔍 X++ Metadata Extraction');
-  console.log(`📂 Source: ${PACKAGES_PATH}`);
+
+  // Build list of metadata root paths to scan
+  const metadataRoots: string[] = [];
+  if (CUSTOM_PACKAGES_PATH) {
+    metadataRoots.push(CUSTOM_PACKAGES_PATH);
+    console.log(`[UDE] Custom packages path: ${CUSTOM_PACKAGES_PATH}`);
+  }
+  if (MICROSOFT_PACKAGES_PATH) {
+    metadataRoots.push(MICROSOFT_PACKAGES_PATH);
+    console.log(`[UDE] Microsoft packages path: ${MICROSOFT_PACKAGES_PATH}`);
+  }
+  if (metadataRoots.length === 0) {
+    metadataRoots.push(PACKAGES_PATH);
+  }
+
+  console.log(`📂 Source: ${metadataRoots.join(', ')}`);
   console.log(`📁 Output: ${OUTPUT_PATH}`);
   console.log(`🎯 Extract Mode: ${EXTRACT_MODE}`);
   
@@ -203,47 +220,71 @@ async function extractMetadata() {
     }
   }
 
-  // Determine which packages to process
-  let packagesToProcess: string[] = [];
-  
+  // Determine which packages to process (with their root paths)
+  // Each entry maps package name -> root path it was found in
+  const packageRootMap: Map<string, string> = new Map();
+
   if (MODELS_TO_EXTRACT.length > 0) {
-    // Explicit list provided - resolve to actual names (case-insensitive)
+    // Explicit list provided - resolve to actual names (case-insensitive) across all roots
+    for (const root of metadataRoots) {
+      for (const modelName of MODELS_TO_EXTRACT) {
+        const actualName = await findActualDirectoryName(root, modelName);
+        if (actualName && !packageRootMap.has(actualName)) {
+          packageRootMap.set(actualName, root);
+        }
+      }
+    }
+    // Warn about models not found in any root
     for (const modelName of MODELS_TO_EXTRACT) {
-      const actualName = await findActualDirectoryName(PACKAGES_PATH, modelName);
-      if (actualName) {
-        packagesToProcess.push(actualName);
-      } else {
+      const found = [...packageRootMap.keys()].some(
+        pkg => pkg.toLowerCase() === modelName.toLowerCase()
+      );
+      if (!found) {
         console.warn(`⚠️  Model not found: ${modelName}`);
       }
     }
   } else {
-    // Scan all packages (including symbolic links)
-    const allPackages = await fs.readdir(PACKAGES_PATH, { withFileTypes: true });
-    const allPackageNames = allPackages
-      .filter(e => e.isDirectory() || e.isSymbolicLink())
-      .map(e => e.name);
-    
-    // Apply filtering based on mode
+    // Scan all packages (including symbolic links) across all roots
+    let totalAllPackageNames = 0;
+    for (const root of metadataRoots) {
+      const allPackages = await fs.readdir(root, { withFileTypes: true });
+      const allPackageNames = allPackages
+        .filter(e => e.isDirectory() || e.isSymbolicLink())
+        .map(e => e.name);
+      totalAllPackageNames += allPackageNames.length;
+
+      // Apply filtering based on mode
+      let filteredPackages: string[];
+      if (FILTER_MODE === 'custom-only') {
+        filteredPackages = allPackageNames.filter(pkg => isCustomModel(pkg));
+      } else if (FILTER_MODE === 'standard-only') {
+        filteredPackages = allPackageNames.filter(pkg => !isCustomModel(pkg));
+      } else {
+        filteredPackages = allPackageNames;
+      }
+
+      for (const pkg of filteredPackages) {
+        if (!packageRootMap.has(pkg)) {
+          packageRootMap.set(pkg, root);
+        }
+      }
+    }
+
+    const packagesToProcessCount = packageRootMap.size;
     if (FILTER_MODE === 'custom-only') {
-      // Keep only custom models (defined in CUSTOM_MODELS or with EXTENSION_PREFIX)
-      packagesToProcess = allPackageNames.filter(pkg => isCustomModel(pkg));
-      console.log(`📦 Found ${formatCount(packagesToProcess.length)} custom packages to process (${formatCount(allPackageNames.length - packagesToProcess.length)} standard models excluded)`);
+      console.log(`📦 Found ${formatCount(packagesToProcessCount)} custom packages to process (${formatCount(totalAllPackageNames - packagesToProcessCount)} standard models excluded)`);
     } else if (FILTER_MODE === 'standard-only') {
-      // Keep only standard models (exclude custom)
-      packagesToProcess = allPackageNames.filter(pkg => !isCustomModel(pkg));
-      console.log(`📦 Found ${formatCount(packagesToProcess.length)} standard packages to process (${formatCount(allPackageNames.length - packagesToProcess.length)} custom models excluded)`);
+      console.log(`📦 Found ${formatCount(packagesToProcessCount)} standard packages to process (${formatCount(totalAllPackageNames - packagesToProcessCount)} custom models excluded)`);
     } else {
-      // Process all packages
-      packagesToProcess = allPackageNames;
-      console.log(`📦 Found ${formatCount(packagesToProcess.length)} packages to process`);
+      console.log(`📦 Found ${formatCount(packagesToProcessCount)} packages to process`);
     }
   }
 
   const modelWorkItems: ModelWorkItem[] = [];
 
   // Build model worklist first to enable accurate progress percentages
-  for (const packageName of packagesToProcess) {
-    const packagePath = path.join(PACKAGES_PATH, packageName);
+  for (const [packageName, rootPath] of packageRootMap) {
+    const packagePath = path.join(rootPath, packageName);
 
     try {
       await fs.access(packagePath);
