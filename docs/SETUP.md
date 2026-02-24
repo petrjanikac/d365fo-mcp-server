@@ -77,6 +77,7 @@ LABEL_LANGUAGES=en-US,cs,sk,de
 # XPP_CONFIG_NAME=                              # Leave empty to auto-select newest config
 # CUSTOM_PACKAGES_PATH=C:/CustomXppCode         # Override custom X++ root
 # MICROSOFT_PACKAGES_PATH=C:/Users/.../Dynamics365/10.0.2428.63/PackagesLocalDirectory
+# Tip: run  npm run select-config  to pick from available XPP configs interactively
 
 # Azure Blob Storage (only needed for cloud sync)
 AZURE_STORAGE_CONNECTION_STRING=DefaultEndpointsProtocol=https;AccountName=...
