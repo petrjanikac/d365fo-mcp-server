@@ -277,18 +277,27 @@ export async function handleGenerateSmartTable(
     }
   }
 
+  const isNonWindows = process.platform !== 'win32';
+
   if (!resolvedModel) {
-    throw new Error(
-      'Could not resolve model name. Provide modelName, projectPath, or solutionPath, ' +
-      'or configure projectPath/solutionPath in .mcp.json.'
-    );
+    if (isNonWindows) {
+      // Azure/Linux: model resolution requires .rnrproj which is only on the Windows VM.
+      // Use modelName arg as-is for prefix resolution (caller may pass e.g. "AslCore").
+      // If not provided either, generate XML without prefix and return it as text.
+      resolvedModel = modelName || undefined;
+    } else {
+      throw new Error(
+        'Could not resolve model name. Provide modelName, projectPath, or solutionPath, ' +
+        'or configure projectPath/solutionPath in .mcp.json.'
+      );
+    }
   }
 
-  console.log(`[generateSmartTable] Using model: ${resolvedModel}`);
+  console.log(`[generateSmartTable] Using model: ${resolvedModel ?? '(none — no prefix)'}`);
 
-  // Apply extension prefix to table name
-  const objectPrefix = resolveObjectPrefix(resolvedModel);
-  const finalName = applyObjectPrefix(name, objectPrefix);
+  // Apply extension prefix to table name (skip when model unknown)
+  const objectPrefix = resolvedModel ? resolveObjectPrefix(resolvedModel) : '';
+  const finalName = objectPrefix ? applyObjectPrefix(name, objectPrefix) : name;
   if (finalName !== name) {
     console.log(`[generateSmartTable] Applied prefix "${objectPrefix}": ${name} → ${finalName}`);
   }
@@ -305,8 +314,41 @@ export async function handleGenerateSmartTable(
 
   console.log(`[generateSmartTable] Generated XML (${xml.length} bytes)`);
 
+  // On non-Windows (Azure/Linux): return XML as text — cannot write to K:\ drive
+  if (isNonWindows) {
+    const noModelNote = resolvedModel
+      ? ''
+      : `\n> ⚠️  No model resolved — XML generated without prefix. Pass \`modelName\` (e.g. \`"AslCore"\`) for correct object naming.`;
+    const nextStep = [
+      ``,
+      `**Next step — to write the file and add it to the VS2022 project:**`,
+      `Call \`create_d365fo_file\` on your **local Windows VM write-only companion** with:`,
+      `- \`objectType\`: \`"table"\``,
+      `- \`objectName\`: \`"${finalName}"\``,
+      `- \`xmlContent\`: *(paste the XML below)*`,
+      `- \`addToProject\`: \`true\``,
+    ].join('\n');
+    return {
+      content: [{
+        type: 'text',
+        text: [
+          `✅ Generated table XML for **${finalName}**` + (resolvedModel ? ` (model: ${resolvedModel})` : ''),
+          `   Fields: ${fields.length}, Indexes: ${indexes.length}, Relations: ${relations.length}`,
+          noModelNote,
+          ``,
+          `⚠️  Running on Azure/Linux — file was NOT written to disk.`,
+          nextStep,
+          ``,
+          `\`\`\`xml`,
+          xml,
+          `\`\`\``,
+        ].join('\n'),
+      }],
+    };
+  }
+
   // Write to file
-  const targetPath = path.join(packagePath, resolvedModel, resolvedModel, 'AxTable', `${finalName}.xml`);
+  const targetPath = path.join(packagePath, resolvedModel!, resolvedModel!, 'AxTable', `${finalName}.xml`);
 
   // Normalize path to Windows format (backslashes) for consistency
   const normalizedPath = targetPath.replace(/\//g, '\\');
