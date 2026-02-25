@@ -6,6 +6,7 @@
 import { Tool } from '@modelcontextprotocol/sdk/types.js';
 import { XppSymbolIndex } from '../metadata/symbolIndex.js';
 import { SmartXmlBuilder, FormDataSourceSpec, FormControlSpec } from '../utils/smartXmlBuilder.js';
+import { FormPatternTemplates } from '../utils/formPatternTemplates.js';
 import { handleGetFormPatterns } from './getFormPatterns.js';
 import path from 'path';
 import fs from 'fs';
@@ -28,7 +29,7 @@ interface GenerateSmartFormArgs {
 
 export const generateSmartFormTool: Tool = {
   name: 'generate_smart_form',
-  description: 'Generate AxForm XML with AI-driven datasource/control suggestions based on indexed patterns. Can copy structure from existing forms, analyze form patterns, or auto-generate grid from table.',
+  description: 'Generate AxForm XML using D365FO pattern-aware templates. Supported patterns: SimpleList | SimpleListDetails | DetailsMaster | DetailsTransaction | Dialog | TableOfContents | Lookup. Can copy structure from existing forms or auto-generate grid from table fields.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -50,7 +51,7 @@ export const generateSmartFormTool: Tool = {
       },
       formPattern: {
         type: 'string',
-        description: 'Optional: Form pattern (e.g., "SimpleList", "DetailsTransaction"). Tool will analyze similar forms.',
+        description: 'Optional: D365FO form pattern. Valid values: SimpleList (default, for setup/config lists), SimpleListDetails (list + detail panel), DetailsMaster (full master record), DetailsTransaction (header+lines, e.g. orders), Dialog (popup dialog), TableOfContents (tabbed settings page), Lookup (dropdown lookup). Aliases like "list", "master", "transaction", "dialog" are also accepted.',
       },
       copyFrom: {
         type: 'string',
@@ -174,9 +175,9 @@ export async function handleGenerateSmartForm(
   }
 
   // Strategy 3: Generate controls for datasource fields
-  if (generateControls && dataSource && dataSources.length > 0) {
-    console.log(`[generateSmartForm] Generating controls for datasource: ${dataSource}`);
-
+  // Also collects gridFields for pattern templates regardless of generateControls flag
+  let gridFields: string[] = [];
+  if (dataSource && dataSources.length > 0) {
     try {
       const db = symbolIndex.db;
 
@@ -188,19 +189,24 @@ export async function handleGenerateSmartForm(
       `).all(dataSource) as Array<{ name: string }>;
 
       if (dbFields.length > 0) {
-        // Generate grid with all fields excluding RecId
-        const fieldNames = dbFields
+        // Collect field names excluding system fields for grid display
+        gridFields = dbFields
           .map((f: { name: string }) => f.name)
-          .filter((n: string) => n !== 'RecId');
+          .filter((n: string) => !['RecId', 'RecVersion', 'DataAreaId', 'Partition'].includes(n))
+          .slice(0, 8); // Cap at 8 columns — reasonable for most patterns
 
-        const gridControl = builder.buildGridControl(
-          `${dataSource}Grid`,
-          dataSource,
-          fieldNames
-        );
-
-        controls.push(gridControl);
-        console.log(`[generateSmartForm] Generated grid with ${fieldNames.length} fields`);
+        if (generateControls) {
+          // Legacy path: also build explicit controls for backward compat
+          const gridControl = builder.buildGridControl(
+            `${dataSource}Grid`,
+            dataSource,
+            gridFields
+          );
+          controls.push(gridControl);
+          console.log(`[generateSmartForm] Generated grid with ${gridFields.length} fields`);
+        } else {
+          console.log(`[generateSmartForm] Collected ${gridFields.length} grid fields for pattern template`);
+        }
       }
     } catch (error) {
       console.warn(`[generateSmartForm] Failed to generate controls:`, error);
@@ -289,13 +295,15 @@ export async function handleGenerateSmartForm(
     console.log(`[generateSmartForm] Applied prefix "${objectPrefix}": ${name} → ${finalName}`);
   }
 
-  // Generate XML
-  const xml = builder.buildFormXml({
-    name: finalName,
-    label: label || finalName,
-    caption,
-    dataSources,
-    controls,
+  // Generate XML using pattern-specific template
+  const normalizedPattern = FormPatternTemplates.normalizePattern(formPattern || 'SimpleList');
+  const primaryDs = dataSources[0];
+  const xml = FormPatternTemplates.build(normalizedPattern, {
+    formName: finalName,
+    dsName: primaryDs?.name,
+    dsTable: primaryDs?.table,
+    caption: caption || label || finalName,
+    gridFields,
   });
 
   console.log(`[generateSmartForm] Generated XML (${xml.length} bytes)`);
@@ -342,7 +350,21 @@ export async function handleGenerateSmartForm(
   }
 
   // Windows — write to file
-  const targetPath = path.join(packagePath, resolvedModel!, resolvedModel!, 'AxForm', `${finalName}.xml`);
+  // Defense-in-depth: resolvedModel should have been validated in the block above,
+  // but path.join(packagePath, undefined, ...) throws a cryptic TypeError — guard explicitly.
+  if (!resolvedModel) {
+    return {
+      content: [{
+        type: 'text',
+        text:
+          `❌ Cannot write form file: model name could not be resolved.\n\n` +
+          `Add \`projectPath\` to .mcp.json so the tool can extract the model name from your .rnrproj:\n` +
+          `\`\`\`json\n{ "servers": { "context": { "projectPath": "K:\\\\VSProjects\\\\...\\\\YourProject.rnrproj" } } }\n\`\`\``,
+      }],
+      isError: true,
+    };
+  }
+  const targetPath = path.join(packagePath, resolvedModel, resolvedModel, 'AxForm', `${finalName}.xml`);
   const normalizedPath = targetPath.replace(/\//g, '\\');
 
   // Verify drive/root exists
