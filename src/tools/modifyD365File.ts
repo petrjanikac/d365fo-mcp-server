@@ -14,7 +14,7 @@ import { getConfigManager } from '../utils/configManager.js';
 import { PackageResolver } from '../utils/packageResolver.js';
 
 const ModifyD365FileArgsSchema = z.object({
-  objectType: z.enum(['class', 'table', 'form', 'enum', 'query', 'view']).describe('Type of D365FO object'),
+  objectType: z.enum(['class', 'table', 'form', 'enum', 'query', 'view', 'edt', 'data-entity', 'report', 'table-extension', 'class-extension', 'form-extension', 'enum-extension']).describe('Type of D365FO object'),
   objectName: z.string().describe('Name of the object to modify'),
   operation: z.enum(['add-method', 'add-field', 'modify-field', 'modify-property', 'remove-method', 'remove-field']).describe('Operation to perform'),
   
@@ -32,7 +32,15 @@ const ModifyD365FileArgsSchema = z.object({
   fieldLabel: z.string().optional().describe('Field label'),
   
   // For modify-property
-  propertyPath: z.string().optional().describe('Path to property (e.g., "Table1.Visible")'),
+  propertyPath: z.string().optional().describe(
+    'Top-level property name to set. For tables: TableGroup, TitleField1, TitleField2, TableType (TempDB/RegularTable/InMemory), ' +
+    'CacheLookup, ClusteredIndex, PrimaryIndex, SaveDataPerCompany, Label, HelpText, Extends. ' +
+    'For EDTs: Extends, StringSize, Label, HelpText, ReferenceTable, ReferenceField. ' +
+    'For classes: Extends, Abstract, Final, Label. ' +
+    'For nested properties use dot notation, e.g. "Fields.AxTableField.Name" (rare). ' +
+    'Examples: propertyPath="TableGroup" propertyValue="Group"; propertyPath="TitleField1" propertyValue="ItemId"; ' +
+    'propertyPath="TableType" propertyValue="TempDB"; propertyPath="Extends" propertyValue="WHSZoneId"'
+  ),
   propertyValue: z.string().optional().describe('New property value'),
   
   // Options
@@ -241,6 +249,13 @@ export async function findD365FileOnDisk(
     enum: 'AxEnum',
     query: 'AxQuery',
     view: 'AxView',
+    edt: 'AxEdt',
+    'data-entity': 'AxDataEntityView',
+    report: 'AxReport',
+    'table-extension': 'AxTableExtension',
+    'class-extension': 'AxClassExtension',
+    'form-extension': 'AxFormExtension',
+    'enum-extension': 'AxEnumExtension',
   };
 
   const objectFolder = folderMap[objectType];
@@ -593,15 +608,27 @@ async function removeField(xmlObj: any, objectType: string, args: any): Promise<
   const rootKey = getRootKey(objectType);
   const root = xmlObj[rootKey];
 
-  if (!root?.Fields?.[0]?.AxTableField) {
-    throw new Error('No fields found in table');
+  if (!root) {
+    throw new Error(`Invalid XML structure: root element <${rootKey}> not found`);
   }
 
-  const fields = root.Fields[0].AxTableField;
+  const rawFields = root.Fields;
+  const fieldsEmpty =
+    !rawFields ||
+    rawFields === '' ||
+    (Array.isArray(rawFields) && (rawFields.length === 0 || rawFields[0] === '' || rawFields[0] == null));
+  if (fieldsEmpty) {
+    throw new Error(`Table has no fields — cannot remove field "${fieldName}"`);
+  }
+
+  const fieldsContainer = Array.isArray(root.Fields) ? root.Fields[0] : root.Fields;
+  if (!Array.isArray(fieldsContainer.AxTableField)) {
+    fieldsContainer.AxTableField = fieldsContainer.AxTableField ? [fieldsContainer.AxTableField] : [];
+  }
+
+  const fields = fieldsContainer.AxTableField;
   const index = fields.findIndex((f: any) => {
-    // Field might be wrapped in different type nodes
-    const fieldObj = Object.values(f)[0];
-    return Array.isArray(fieldObj) && fieldObj[0].Name && fieldObj[0].Name[0] === fieldName;
+    return Array.isArray(f.Name) ? f.Name[0] === fieldName : f.Name === fieldName;
   });
 
   if (index === -1) {
@@ -666,6 +693,13 @@ function getRootKey(objectType: string): string {
     enum: 'AxEnum',
     query: 'AxQuery',
     view: 'AxView',
+    edt: 'AxEdt',
+    'data-entity': 'AxDataEntityView',
+    report: 'AxReport',
+    'table-extension': 'AxTableExtension',
+    'class-extension': 'AxClassExtension',
+    'form-extension': 'AxFormExtension',
+    'enum-extension': 'AxEnumExtension',
   };
 
   const key = keyMap[objectType];
