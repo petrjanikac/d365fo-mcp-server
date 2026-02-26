@@ -16,6 +16,7 @@ const ClassInfoArgsSchema = z.object({
   includeWorkspace: z.boolean().optional().default(false).describe('Whether to search in workspace first'),
   workspacePath: z.string().optional().describe('Workspace path to search for class'),
   methodOffset: z.number().optional().default(0).describe('Offset for paginating methods (use multiples of 25)'),
+  compact: z.boolean().optional().default(false).describe('Return signatures only (no source bodies) — much smaller response, useful for initial exploration'),
 });
 
 export async function classInfoTool(request: CallToolRequest, context: XppServerContext) {
@@ -171,17 +172,22 @@ export async function classInfoTool(request: CallToolRequest, context: XppServer
 
     for (const method of pagedMethods) {
       const params = method.parameters.map((p: { type: string; name: string }) => `${p.type} ${p.name}`).join(', ');
-      output += `### ${method.name}\n\n`;
-      output += `- **Visibility:** ${method.visibility}\n`;
-      output += `- **Returns:** ${method.returnType}\n`;
-      output += `- **Static:** ${method.isStatic ? 'Yes' : 'No'}\n`;
-      output += `- **Signature:** \`${method.returnType} ${method.name}(${params})\`\n\n`;
-      
-      if (method.documentation) {
-        output += `**Documentation:**\n${method.documentation}\n\n`;
+      if (args.compact) {
+        // Compact mode: one line per method, signature only
+        output += `- \`${method.visibility}${method.isStatic ? ' static' : ''} ${method.returnType} ${method.name}(${params})\`\n`;
+      } else {
+        output += `### ${method.name}\n\n`;
+        output += `- **Visibility:** ${method.visibility}\n`;
+        output += `- **Returns:** ${method.returnType}\n`;
+        output += `- **Static:** ${method.isStatic ? 'Yes' : 'No'}\n`;
+        output += `- **Signature:** \`${method.returnType} ${method.name}(${params})\`\n\n`;
+        
+        if (method.documentation) {
+          output += `**Documentation:**\n${method.documentation}\n\n`;
+        }
+        
+        output += `\`\`\`xpp\n${method.source.substring(0, 500)}${method.source.length > 500 ? '...' : ''}\n\`\`\`\n\n`;
       }
-      
-      output += `\`\`\`xpp\n${method.source.substring(0, 500)}${method.source.length > 500 ? '...' : ''}\n\`\`\`\n\n`;
     }
 
     if (hasMore) {
