@@ -14,8 +14,20 @@ This workspace contains D365FO code. **Always use the specialized MCP tools**  p
 > - `create_file` on an existing object
 >
 >  **ALWAYS** use:
-> - `modify_d365fo_file()`  edit existing classes, tables, forms (add-method, add-field, modify-property)
+> - `modify_d365fo_file()`  edit existing classes, tables, EDTs, forms, enums (add-method, add-field, modify-field, modify-property, remove-method, remove-field)
 > - `create_d365fo_file()`  create new objects
+>
+> **modify-property covers ALL table/EDT/class-level properties — NEVER use PowerShell for these:**
+> ```
+> TableGroup     → modify-property  propertyPath="TableGroup"    propertyValue="Group"
+> TitleField1/2  → modify-property  propertyPath="TitleField1"   propertyValue="ItemId"
+> TableType      → modify-property  propertyPath="TableType"     propertyValue="TempDB"
+> CacheLookup    → modify-property  propertyPath="CacheLookup"   propertyValue="Found"
+> SaveDataPerCo  → modify-property  propertyPath="SaveDataPerCompany" propertyValue="No"
+> EDT Extends    → modify-property  objectType="edt"  propertyPath="Extends" propertyValue="WHSZoneId"
+> Class Extends  → modify-property  objectType="class" propertyPath="Extends" propertyValue="BaseClass"
+> Label/HelpText → modify-property  propertyPath="Label" propertyValue="@MyModel:MyLabel"
+> ```
 >
 > **Pattern:**
 > ```

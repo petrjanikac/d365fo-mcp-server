@@ -619,7 +619,7 @@ Examples:
             properties: {
               objectType: {
                 type: 'string',
-                enum: ['class', 'table', 'form', 'enum', 'query', 'view'],
+                enum: ['class', 'table', 'form', 'enum', 'query', 'view', 'edt', 'data-entity', 'report', 'table-extension', 'class-extension', 'form-extension', 'enum-extension'],
                 description: 'Type of D365FO object to modify'
               },
               objectName: {
@@ -669,7 +669,18 @@ Examples:
               },
               propertyPath: {
                 type: 'string',
-                description: 'Path to property (e.g., "Table1.Visible", for modify-property)'
+                description:
+                  'Top-level property name to set on the object root. ' +
+                  'Table properties: TableGroup (Group/Parameter/Main/…), TitleField1, TitleField2, ' +
+                  'TableType (TempDB / InMemory / RegularTable), CacheLookup, ClusteredIndex, ' +
+                  'PrimaryIndex, SaveDataPerCompany (Yes/No), Label, HelpText, Extends. ' +
+                  'EDT properties: Extends, StringSize, Label, HelpText, ReferenceTable, ReferenceField. ' +
+                  'Class properties: Extends, Abstract (true/false), Final (true/false), Label. ' +
+                  'Use dot notation only for truly nested XML nodes (rare). ' +
+                  'Examples: propertyPath="TableGroup" propertyValue="Group" | ' +
+                  'propertyPath="TitleField1" propertyValue="ItemId" | ' +
+                  'propertyPath="TableType" propertyValue="TempDB" | ' +
+                  'propertyPath="Extends" propertyValue="WHSZoneId" (on an EDT)'
               },
               propertyValue: {
                 type: 'string',
