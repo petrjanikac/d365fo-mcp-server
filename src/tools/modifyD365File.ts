@@ -243,14 +243,21 @@ async function findD365FileOnDisk(
 
   const configManager = getConfigManager();
 
-  // Resolve model name: explicit arg (if not placeholder) → config → auto-detected
+  // Resolve model name (same priority order as generateSmartTable):
+  //   1. Explicit arg (skip placeholders like "any")
+  //   2. .mcp.json context (modelName field or last segment of workspacePath)
+  //   3. Auto-detected model name (async, from .rnrproj scan)
+  //   4. D365FO_MODEL_NAME env var
   const resolvedModel =
     (modelName && modelName !== 'any' ? modelName : null) ||
     configManager.getModelName() ||
-    (await configManager.getAutoDetectedModelName());
+    (await configManager.getAutoDetectedModelName()) ||
+    process.env.D365FO_MODEL_NAME ||
+    null;
 
   if (!resolvedModel) {
-    console.error('[modifyD365File] Filesystem fallback: could not resolve model name');
+    console.error('[modifyD365File] Filesystem fallback: could not resolve model name. ' +
+      'Provide modelName parameter, configure .mcp.json with modelName/projectPath, or set D365FO_MODEL_NAME env var.');
     return null;
   }
 

@@ -308,15 +308,23 @@ class ConfigManager {
 
   /**
    * Get model name from configuration.
-   * Priority: 1) Explicit modelName in mcp.json context  2) Last segment of workspacePath
-   * Use this as the primary fallback instead of D365FO_MODEL_NAME env var.
+   * Priority:
+   *   1) Explicit modelName in mcp.json context
+   *   2) Last segment of workspacePath (only when it looks like a D365FO package, i.e. no hyphens)
+   *   3) D365FO_MODEL_NAME env var
    */
   getModelName(): string | null {
     const context = this.getContext();
     if (context?.modelName) {
       return context.modelName;
     }
-    return this.getModelNameFromWorkspacePath();
+    const fromWorkspace = this.getModelNameFromWorkspacePath();
+    // Skip workspace-derived name when it clearly isn't a D365FO package
+    // (D365FO package names use PascalCase/underscore, not kebab-case like repo names)
+    if (fromWorkspace && !fromWorkspace.includes('-')) {
+      return fromWorkspace;
+    }
+    return process.env.D365FO_MODEL_NAME || null;
   }
 
   /**
