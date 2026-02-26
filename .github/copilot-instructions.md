@@ -101,7 +101,7 @@ For any D365FO request, **start with MCP tools  never** `code_search`, `grep_sea
 | `get_form_info(formName)` | Datasources, controls, methods |
 | `get_query_info(queryName)` | Datasources, joins, ranges |
 | `get_view_info(viewName)` | View / data entity structure |
-| `get_method_signature(className, methodName)` | **Preferred way to get a full method body** — required before CoC |
+| `get_method_signature(className, methodName, includeCocTemplate?)` | **Preferred way to get a full method body** — required before CoC. Pass `includeCocTemplate: true` only when writing a CoC extension |
 | `find_references(targetName, targetType?)` | Where-used analysis |
 
 ### Code Generation & Analysis
