@@ -213,4 +213,151 @@ describe('XmlTemplateGenerator.sanitizeReportXml()', () => {
       expect(sanitized).toBe(generated);
     });
   });
+
+  // ─────────────────────────────────────────────────────────────
+  // Fix 6 — <Parameters> inside <AxReportDataSet>
+  // ─────────────────────────────────────────────────────────────
+  describe('fix 6: <Parameters> in <AxReportDataSet>', () => {
+    const XML_WITH_DS_NO_PARAMS = `<?xml version="1.0" encoding="utf-8"?>
+<AxReport xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V2">
+\t<Name>TestRep</Name>
+\t<DataMethods />
+\t<DataSets>
+\t\t<AxReportDataSet xmlns="">
+\t\t\t<Name>TestRepTmp</Name>
+\t\t\t<DataSourceType>ReportDataProvider</DataSourceType>
+\t\t\t<Query>SELECT * FROM TestRepDP.TestRepTmp</Query>
+\t\t\t<FieldGroups />
+\t\t\t<Fields />
+\t\t</AxReportDataSet>
+\t</DataSets>
+\t<Designs>
+\t\t<AxReportDesign xmlns=""
+\t\t\t\ti:type="AxReportPrecisionDesign">
+\t\t\t<Name>Report</Name>
+\t\t</AxReportDesign>
+\t</Designs>
+\t<EmbeddedImages />
+</AxReport>`;
+
+    it('should add <Parameters> after <Fields /> when DataSourceType present', () => {
+      const result = XmlTemplateGenerator.sanitizeReportXml(XML_WITH_DS_NO_PARAMS);
+      expect(result).toContain('<Parameters>');
+      expect(result).toContain('<Name>AX_PartitionKey</Name>');
+      expect(result).toContain('<Name>AX_RdpPreProcessedId</Name>');
+      // Must be inside the dataset, after Fields
+      const fieldsIdx = result.indexOf('<Fields />');
+      const paramsIdx = result.indexOf('<Parameters>');
+      expect(paramsIdx).toBeGreaterThan(fieldsIdx);
+    });
+
+    it('should NOT add <Parameters> to datasets without <DataSourceType> (minimal stub)', () => {
+      const result = XmlTemplateGenerator.sanitizeReportXml(CORRECT_XML);
+      expect(result).toBe(CORRECT_XML); // no change to minimal XML
+    });
+
+    it('should not duplicate <Parameters> when already present', () => {
+      const xml = XML_WITH_DS_NO_PARAMS;
+      const once = XmlTemplateGenerator.sanitizeReportXml(xml);
+      const twice = XmlTemplateGenerator.sanitizeReportXml(once);
+      expect(twice).toBe(once);
+      const count = (once.match(/<Parameters>/g) || []).length;
+      expect(count).toBe(1);
+    });
+  });
+
+  // ─────────────────────────────────────────────────────────────
+  // Fix 7 — <DefaultParameterGroup> before <Designs>
+  // ─────────────────────────────────────────────────────────────
+  describe('fix 7: <DefaultParameterGroup>', () => {
+    const XML_WITH_DS_NO_DPG = `<?xml version="1.0" encoding="utf-8"?>
+<AxReport xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V2">
+\t<Name>TestRep</Name>
+\t<DataMethods />
+\t<DataSets>
+\t\t<AxReportDataSet xmlns="">
+\t\t\t<Name>TestRepTmp</Name>
+\t\t\t<DataSourceType>ReportDataProvider</DataSourceType>
+\t\t\t<Query>SELECT * FROM TestRepDP.TestRepTmp</Query>
+\t\t\t<FieldGroups />
+\t\t\t<Fields />
+\t\t</AxReportDataSet>
+\t</DataSets>
+\t<Designs>
+\t\t<AxReportDesign xmlns=""
+\t\t\t\ti:type="AxReportPrecisionDesign">
+\t\t\t<Name>Report</Name>
+\t\t</AxReportDesign>
+\t</Designs>
+\t<EmbeddedImages />
+</AxReport>`;
+
+    it('should add <DefaultParameterGroup> before <Designs> when DataSourceType present', () => {
+      const result = XmlTemplateGenerator.sanitizeReportXml(XML_WITH_DS_NO_DPG);
+      expect(result).toContain('<DefaultParameterGroup>');
+      expect(result).toContain('<Name xmlns="">Parameters</Name>');
+      // Must appear before <Designs>
+      const dpgIdx = result.indexOf('<DefaultParameterGroup>');
+      const designIdx = result.indexOf('<Designs>');
+      expect(dpgIdx).toBeGreaterThan(0);
+      expect(dpgIdx).toBeLessThan(designIdx);
+    });
+
+    it('should NOT add <DefaultParameterGroup> without <DataSourceType>', () => {
+      const result = XmlTemplateGenerator.sanitizeReportXml(CORRECT_XML);
+      expect(result).toBe(CORRECT_XML);
+    });
+
+    it('should not duplicate <DefaultParameterGroup> when already present', () => {
+      const once = XmlTemplateGenerator.sanitizeReportXml(XML_WITH_DS_NO_DPG);
+      const twice = XmlTemplateGenerator.sanitizeReportXml(once);
+      expect(twice).toBe(once);
+      const count = (once.match(/<DefaultParameterGroup>/g) || []).length;
+      expect(count).toBe(1);
+    });
+  });
+
+  // ─────────────────────────────────────────────────────────────
+  // Fix 8 — RDL <PageHeader>/<PageFooter> inside <Page>
+  // ─────────────────────────────────────────────────────────────
+  describe('fix 8: RDL <PageHeader>/<PageFooter> inside <Page>', () => {
+    const RDL_WRONG = `<?xml version="1.0"?><Report xmlns="http://schemas.microsoft.com/sqlserver/reporting/2008/01/reportdefinition"><PageHeader><Height>1cm</Height></PageHeader><Body><Height>10cm</Height></Body></Report>`;
+    const RDL_CORRECT = `<?xml version="1.0"?><Report xmlns="http://schemas.microsoft.com/sqlserver/reporting/2008/01/reportdefinition"><DataSources /><Body><Height>10cm</Height></Body><Page><PageHeader><Height>1cm</Height></PageHeader></Page></Report>`;
+
+    const makeAxReport = (rdl: string) =>
+      `<AxReport xmlns="Microsoft.Dynamics.AX.Metadata.V2"><Name>R</Name><DataMethods /><Designs><AxReportDesign xmlns="" i:type="AxReportPrecisionDesign"><Name>Report</Name><Text><![CDATA[${rdl}]]></Text></AxReportDesign></Designs></AxReport>`;
+
+    it('should move <PageHeader> inside <Page> when it is a direct child of <Report>', () => {
+      const xml = makeAxReport(RDL_WRONG);
+      const result = XmlTemplateGenerator.sanitizeReportXml(xml);
+      // PageHeader should now be inside Page
+      expect(result).toContain('<Page>');
+      expect(result).toContain('<PageHeader>');
+      // PageHeader must appear after <Page> in the output
+      const pageIdx = result.indexOf('<Page>');
+      const phIdx = result.indexOf('<PageHeader>');
+      expect(phIdx).toBeGreaterThan(pageIdx);
+    });
+
+    it('should not modify RDL when <PageHeader> is already inside <Page>', () => {
+      const xml = makeAxReport(RDL_CORRECT);
+      const result = XmlTemplateGenerator.sanitizeReportXml(xml);
+      // The CDATA content should be unchanged (no extra <Page> wrapping)
+      const cdataMatch = result.match(/<!\[CDATA\[([\s\S]*?)\]\]>/);
+      expect(cdataMatch).toBeTruthy();
+      expect(cdataMatch![1]).toBe(RDL_CORRECT);
+    });
+
+    it('should not modify XML when no <Text><![CDATA[ present', () => {
+      const result = XmlTemplateGenerator.sanitizeReportXml(CORRECT_XML);
+      expect(result).toBe(CORRECT_XML);
+    });
+
+    it('fix 8 is idempotent', () => {
+      const xml = makeAxReport(RDL_WRONG);
+      const once = XmlTemplateGenerator.sanitizeReportXml(xml);
+      const twice = XmlTemplateGenerator.sanitizeReportXml(once);
+      expect(twice).toBe(once);
+    });
+  });
 });
