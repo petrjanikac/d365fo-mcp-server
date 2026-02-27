@@ -644,4 +644,59 @@ describe('XmlTemplateGenerator.sanitizeReportXml()', () => {
       expect(twice).toBe(once);
     });
   });
+
+  // ─────────────────────────────────────────────────────────────
+  // Fix 14 — flat BorderStyle/BorderColor/BorderWidth in <Style>
+  // ─────────────────────────────────────────────────────────────
+  describe('fix 14: flat border properties as direct child of <Style>', () => {
+    const NS = 'http://schemas.microsoft.com/sqlserver/reporting/2016/01/reportdefinition';
+    const wrap = (rdl: string) =>
+      `<AxReport xmlns="Microsoft.Dynamics.AX.Metadata.V2"><Name>R</Name><DataMethods /><Designs><AxReportDesign xmlns="" i:type="AxReportPrecisionDesign"><Name>Report</Name><Text><![CDATA[${rdl}]]></Text></AxReportDesign></Designs></AxReport>`;
+
+    it('wraps <BorderStyle> into <Border><Style>', () => {
+      const rdl = `<?xml version="1.0"?><Report xmlns="${NS}"><Style><BorderStyle>Solid</BorderStyle></Style></Report>`;
+      const xml = wrap(rdl);
+      const result = XmlTemplateGenerator.sanitizeReportXml(xml);
+      expect(result).toContain('<Border><Style>Solid</Style></Border>');
+      expect(result).not.toContain('<BorderStyle>');
+    });
+
+    it('wraps <BorderStyle>, <BorderColor>, <BorderWidth> all into one <Border>', () => {
+      const rdl = `<?xml version="1.0"?><Report xmlns="${NS}"><Style><BorderStyle>Solid</BorderStyle><BorderColor>#000000</BorderColor><BorderWidth>1pt</BorderWidth></Style></Report>`;
+      const xml = wrap(rdl);
+      const result = XmlTemplateGenerator.sanitizeReportXml(xml);
+      expect(result).toContain('<Border>');
+      expect(result).toContain('<Style>Solid</Style>');
+      expect(result).toContain('<Color>#000000</Color>');
+      expect(result).toContain('<Width>1pt</Width>');
+      expect(result).not.toContain('<BorderStyle>');
+      expect(result).not.toContain('<BorderColor>');
+      expect(result).not.toContain('<BorderWidth>');
+    });
+
+    it('wraps <TopBorderStyle> into <TopBorder><Style>', () => {
+      const rdl = `<?xml version="1.0"?><Report xmlns="${NS}"><Style><TopBorderStyle>Solid</TopBorderStyle><TopBorderColor>Red</TopBorderColor></Style></Report>`;
+      const xml = wrap(rdl);
+      const result = XmlTemplateGenerator.sanitizeReportXml(xml);
+      expect(result).toContain('<TopBorder>');
+      expect(result).toContain('<Style>Solid</Style>');
+      expect(result).toContain('<Color>Red</Color>');
+      expect(result).not.toContain('<TopBorderStyle>');
+    });
+
+    it('does not modify <Style> that already uses <Border> wrapper', () => {
+      const rdl = `<?xml version="1.0"?><Report xmlns="${NS}"><Style><Border><Style>Solid</Style><Color>#000</Color></Border></Style></Report>`;
+      const xml = wrap(rdl);
+      const result = XmlTemplateGenerator.sanitizeReportXml(xml);
+      expect(result).toBe(xml);
+    });
+
+    it('fix 14 is idempotent', () => {
+      const rdl = `<?xml version="1.0"?><Report xmlns="${NS}"><Style><BorderStyle>Solid</BorderStyle><BorderColor>#000</BorderColor></Style></Report>`;
+      const xml = wrap(rdl);
+      const once  = XmlTemplateGenerator.sanitizeReportXml(xml);
+      const twice = XmlTemplateGenerator.sanitizeReportXml(once);
+      expect(twice).toBe(once);
+    });
+  });
 });

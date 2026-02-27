@@ -1255,6 +1255,64 @@ ${defaultParamGroupXml}
       return open + fixedRdl + close;
     });
 
+    // 14. Fix flat border properties as direct children of <Style>.
+    //     SSRS <Style> only accepts <Border>, <TopBorder>, <BottomBorder>,
+    //     <LeftBorder>, <RightBorder> as border wrappers — not flat attributes
+    //     like <BorderStyle>, <BorderColor>, <BorderWidth>.
+    //     AI generators often emit:
+    //       <Style><BorderStyle>Solid</BorderStyle><BorderColor>#000</BorderColor></Style>
+    //     but the correct form is:
+    //       <Style><Border><Style>Solid</Style><Color>#000</Color></Border></Style>
+    //     Same pattern applies to TopBorderStyle/TopBorderColor/TopBorderWidth etc.
+    xml = xml.replace(/(<Text><!\[CDATA\[)([\s\S]*?)(\]\]><\/Text>)/, (_whole, open, rdl, close) => {
+      // Use lazy match so innermost <Style> is processed first;
+      // the outer <Style> is only matched when there are no inner <Style> tags.
+      const fixedRdl = rdl.replace(
+        /(<Style>)([\s\S]*?)(<\/Style>)/g,
+        (styleMatch: string, styleOpen: string, styleContent: string, styleClose: string) => {
+          // Each entry: [flat name prefix, wrapper element name]
+          const groups: Array<[string, string]> = [
+            ['Border',       'Border'],
+            ['TopBorder',    'TopBorder'],
+            ['BottomBorder', 'BottomBorder'],
+            ['LeftBorder',   'LeftBorder'],
+            ['RightBorder',  'RightBorder'],
+          ];
+
+          let content = styleContent;
+          let changed = false;
+
+          for (const [prefix, wrapper] of groups) {
+            const styleTag = `${prefix}Style`;
+            const colorTag = `${prefix}Color`;
+            const widthTag = `${prefix}Width`;
+
+            if (!new RegExp(`<(?:${styleTag}|${colorTag}|${widthTag})>`).test(content)) continue;
+
+            let bStyle = '', bColor = '', bWidth = '';
+            content = content.replace(new RegExp(`<${styleTag}>([^<]*)<\/${styleTag}>`), (_, v) => { bStyle = v; return ''; });
+            content = content.replace(new RegExp(`<${colorTag}>([^<]*)<\/${colorTag}>`), (_, v) => { bColor = v; return ''; });
+            content = content.replace(new RegExp(`<${widthTag}>([^<]*)<\/${widthTag}>`), (_, v) => { bWidth = v; return ''; });
+
+            let inner = '';
+            if (bStyle) inner += `<Style>${bStyle}</Style>`;
+            if (bColor) inner += `<Color>${bColor}</Color>`;
+            if (bWidth) inner += `<Width>${bWidth}</Width>`;
+
+            // Prepend the corrected wrapper before remaining style content
+            content = `<${wrapper}>${inner}</${wrapper}>` + content;
+            changed = true;
+          }
+
+          if (!changed) return styleMatch;
+          console.error('[sanitizeReportXml] Wrapped flat border properties into <Border> inside <Style> in embedded RDL');
+          return styleOpen + content + styleClose;
+        }
+      );
+      if (fixedRdl === rdl) return _whole;
+      return open + fixedRdl + close;
+    });
+
     return xml;
   }
 }
