@@ -1383,6 +1383,43 @@ ${defaultParamGroupXml}
       return open + result + close;
     });
 
+    // 16. Rename reversed border side wrapper element names.
+    //     SSRS schema expects <TopBorder>, <BottomBorder>, <LeftBorder>, <RightBorder>.
+    //     AI generators often emit them reversed: <BorderTop>, <BorderBottom>, etc.
+    //     The inner content (<Style>, <Color>, <Width>) is already correct — only
+    //     the wrapper element name needs to change.
+    if (xml.includes('<BorderTop>') || xml.includes('<BorderBottom>') ||
+        xml.includes('<BorderLeft>') || xml.includes('<BorderRight>')) {
+      xml = xml
+        .replace(/<BorderTop>/g,     '<TopBorder>')    .replace(/<\/BorderTop>/g,     '</TopBorder>')
+        .replace(/<BorderBottom>/g,  '<BottomBorder>') .replace(/<\/BorderBottom>/g,  '</BottomBorder>')
+        .replace(/<BorderLeft>/g,    '<LeftBorder>')   .replace(/<\/BorderLeft>/g,    '</LeftBorder>')
+        .replace(/<BorderRight>/g,   '<RightBorder>')  .replace(/<\/BorderRight>/g,   '</RightBorder>');
+      console.error('[sanitizeReportXml] Fixed reversed border side wrapper names (BorderXxx → XxxBorder) in RDL');
+    }
+
+    // 17. Add missing </Style> before </Paragraph> when Paragraph-level Style is
+    //     left unclosed. AI generators sometimes emit:
+    //       <Paragraph><TextRuns>...</TextRuns><Style><TextAlign>Right</TextAlign></Paragraph>
+    //     The </Style> before </Paragraph> is missing, which makes the XML
+    //     malformed (</Paragraph> appears to close inside <Style>) and causes
+    //     SSRS deserialization to fail entirely.
+    xml = xml.replace(/(<Text><!\[CDATA\[)([\s\S]*?)(\]\]><\/Text>)/, (_whole, open, rdl, close) => {
+      const fixedRdl = rdl.replace(
+        /<Paragraph>([\s\S]*?)<\/Paragraph>/g,
+        (match: string, inner: string) => {
+          const opens  = (inner.match(/<Style>/g)  || []).length;
+          const closes = (inner.match(/<\/Style>/g) || []).length;
+          if (opens === closes) return match;
+          const missing = opens - closes;
+          console.error('[sanitizeReportXml] Added missing </Style> tag(s) inside <Paragraph> in embedded RDL');
+          return `<Paragraph>${inner}${'</Style>'.repeat(missing)}</Paragraph>`;
+        }
+      );
+      if (fixedRdl === rdl) return _whole;
+      return open + fixedRdl + close;
+    });
+
     return xml;
   }
 }

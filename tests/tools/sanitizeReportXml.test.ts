@@ -759,4 +759,96 @@ describe('XmlTemplateGenerator.sanitizeReportXml()', () => {
       expect(twice).toBe(once);
     });
   });
+
+  // ─────────────────────────────────────────────────────────────
+  // Fix 16 — reversed border side wrapper names (<BorderTop> → <TopBorder> etc.)
+  // ─────────────────────────────────────────────────────────────
+  describe('fix 16: reversed border side wrapper names', () => {
+    const NS = 'http://schemas.microsoft.com/sqlserver/reporting/2016/01/reportdefinition';
+    const wrap = (rdl: string) =>
+      `<AxReport xmlns="Microsoft.Dynamics.AX.Metadata.V2"><Name>R</Name><DataMethods /><Designs><AxReportDesign xmlns="" i:type="AxReportPrecisionDesign"><Name>Report</Name><Text><![CDATA[${rdl}]]></Text></AxReportDesign></Designs></AxReport>`;
+
+    it('renames <BorderTop> to <TopBorder>', () => {
+      const rdl = `<?xml version="1.0"?><Report xmlns="${NS}"><Style><BorderTop><Style>Solid</Style><Width>1pt</Width></BorderTop></Style></Report>`;
+      const xml = wrap(rdl);
+      const result = XmlTemplateGenerator.sanitizeReportXml(xml);
+      expect(result).toContain('<TopBorder>');
+      expect(result).toContain('</TopBorder>');
+      expect(result).not.toContain('<BorderTop>');
+      expect(result).not.toContain('</BorderTop>');
+    });
+
+    it('renames <BorderBottom> to <BottomBorder>', () => {
+      const rdl = `<?xml version="1.0"?><Report xmlns="${NS}"><Style><BorderBottom><Style>Solid</Style><Width>1pt</Width></BorderBottom></Style></Report>`;
+      const xml = wrap(rdl);
+      const result = XmlTemplateGenerator.sanitizeReportXml(xml);
+      expect(result).toContain('<BottomBorder>');
+      expect(result).not.toContain('<BorderBottom>');
+    });
+
+    it('renames all four sides in one pass', () => {
+      const rdl = `<?xml version="1.0"?><Report xmlns="${NS}"><Style><BorderTop><Style>Solid</Style></BorderTop><BorderBottom><Style>Dashed</Style></BorderBottom><BorderLeft><Style>None</Style></BorderLeft><BorderRight><Style>Solid</Style></BorderRight></Style></Report>`;
+      const xml = wrap(rdl);
+      const result = XmlTemplateGenerator.sanitizeReportXml(xml);
+      expect(result).toContain('<TopBorder>');    expect(result).not.toContain('<BorderTop>');
+      expect(result).toContain('<BottomBorder>'); expect(result).not.toContain('<BorderBottom>');
+      expect(result).toContain('<LeftBorder>');   expect(result).not.toContain('<BorderLeft>');
+      expect(result).toContain('<RightBorder>');  expect(result).not.toContain('<BorderRight>');
+    });
+
+    it('does not modify already correct <TopBorder> names', () => {
+      const rdl = `<?xml version="1.0"?><Report xmlns="${NS}"><Style><TopBorder><Style>Solid</Style><Width>1pt</Width></TopBorder></Style></Report>`;
+      const xml = wrap(rdl);
+      const result = XmlTemplateGenerator.sanitizeReportXml(xml);
+      expect(result).toBe(xml);
+    });
+
+    it('fix 16 is idempotent', () => {
+      const rdl = `<?xml version="1.0"?><Report xmlns="${NS}"><Style><BorderTop><Style>Solid</Style></BorderTop></Style></Report>`;
+      const xml = wrap(rdl);
+      const once  = XmlTemplateGenerator.sanitizeReportXml(xml);
+      const twice = XmlTemplateGenerator.sanitizeReportXml(once);
+      expect(twice).toBe(once);
+    });
+  });
+
+  // ─────────────────────────────────────────────────────────────
+  // Fix 17 — missing </Style> before </Paragraph>
+  // ─────────────────────────────────────────────────────────────
+  describe('fix 17: missing </Style> before </Paragraph>', () => {
+    const NS = 'http://schemas.microsoft.com/sqlserver/reporting/2016/01/reportdefinition';
+    const wrap = (rdl: string) =>
+      `<AxReport xmlns="Microsoft.Dynamics.AX.Metadata.V2"><Name>R</Name><DataMethods /><Designs><AxReportDesign xmlns="" i:type="AxReportPrecisionDesign"><Name>Report</Name><Text><![CDATA[${rdl}]]></Text></AxReportDesign></Designs></AxReport>`;
+
+    it('adds missing </Style> when Paragraph Style has no closing tag', () => {
+      const rdl = `<?xml version="1.0"?><Report xmlns="${NS}"><Paragraph><TextRuns><TextRun><Value>X</Value><Style /></TextRun></TextRuns><Style><TextAlign>Right</TextAlign></Paragraph></Report>`;
+      const xml = wrap(rdl);
+      const result = XmlTemplateGenerator.sanitizeReportXml(xml);
+      expect(result).toContain('<Style><TextAlign>Right</TextAlign></Style></Paragraph>');
+      expect(result).not.toContain('<Style><TextAlign>Right</TextAlign></Paragraph>');
+    });
+
+    it('adds missing </Style> when Paragraph has TextRun styles plus unclosed outer Style', () => {
+      // 2 TextRun <Style> (both properly closed) + 1 outer Paragraph <Style> (unclosed)
+      const rdl = `<?xml version="1.0"?><Report xmlns="${NS}"><Paragraph><TextRuns><TextRun><Value>A</Value><Style><FontSize>9pt</FontSize></Style></TextRun><TextRun><Value>B</Value><Style><FontSize>9pt</FontSize></Style></TextRun></TextRuns><Style><TextAlign>Right</TextAlign></Paragraph></Report>`;
+      const xml = wrap(rdl);
+      const result = XmlTemplateGenerator.sanitizeReportXml(xml);
+      expect(result).toContain('<Style><TextAlign>Right</TextAlign></Style></Paragraph>');
+    });
+
+    it('does not modify Paragraphs that already have balanced Style tags', () => {
+      const rdl = `<?xml version="1.0"?><Report xmlns="${NS}"><Paragraph><TextRuns><TextRun><Value>X</Value><Style /></TextRun></TextRuns><Style><TextAlign>Right</TextAlign></Style></Paragraph></Report>`;
+      const xml = wrap(rdl);
+      const result = XmlTemplateGenerator.sanitizeReportXml(xml);
+      expect(result).toBe(xml);
+    });
+
+    it('fix 17 is idempotent', () => {
+      const rdl = `<?xml version="1.0"?><Report xmlns="${NS}"><Paragraph><TextRuns><TextRun><Value>X</Value><Style /></TextRun></TextRuns><Style><TextAlign>Right</TextAlign></Paragraph></Report>`;
+      const xml = wrap(rdl);
+      const once  = XmlTemplateGenerator.sanitizeReportXml(xml);
+      const twice = XmlTemplateGenerator.sanitizeReportXml(once);
+      expect(twice).toBe(once);
+    });
+  });
 });
