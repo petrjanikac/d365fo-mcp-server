@@ -1069,6 +1069,46 @@ ${defaultParamGroupXml}
    *  5. <AxReportDesign> has xmlns="" and i:type="AxReportPrecisionDesign" attributes
    *     (VS Designer won't show Designs sub-nodes without these)
    */
+
+  /**
+   * Sanitize AxTable XML to ensure correct D365FO field element format.
+   *
+   * D365FO requires fields as:
+   *   <AxTableField xmlns="" i:type="AxTableFieldString"> ... </AxTableField>
+   *
+   * AI generators often emit the shorter form:
+   *   <AxTableFieldString> ... </AxTableFieldString>
+   *
+   * This method also ensures <FullTextIndexes /> is present between </Fields> and <Indexes>.
+   */
+  static sanitizeTableXml(xml: string): string {
+    const fieldTypes = [
+      'AxTableFieldString', 'AxTableFieldInt', 'AxTableFieldInt64',
+      'AxTableFieldReal', 'AxTableFieldDate', 'AxTableFieldUtcDateTime',
+      'AxTableFieldEnum', 'AxTableFieldGuid', 'AxTableFieldContainer',
+    ];
+
+    for (const ft of fieldTypes) {
+      // Opening tag: <AxTableFieldString ...> → <AxTableField xmlns="" i:type="AxTableFieldString" ...>
+      // Only replace if NOT already inside a correct <AxTableField xmlns="" i:type="..."> wrapper
+      const openRe = new RegExp(`<${ft}(\\s[^>]*)?>`, 'g');
+      xml = xml.replace(openRe, (_match, attrs: string | undefined) => {
+        const extra = attrs ? attrs : '';
+        return `<AxTableField xmlns="" i:type="${ft}"${extra}>`;
+      });
+      // Closing tag
+      xml = xml.replace(new RegExp(`<\\/${ft}>`, 'g'), '</AxTableField>');
+    }
+
+    // Ensure <FullTextIndexes /> is present between </Fields> and <Indexes>
+    if (!xml.includes('<FullTextIndexes')) {
+      xml = xml.replace('</Fields>\n\t<Indexes', '</Fields>\n\t<FullTextIndexes />\n\t<Indexes');
+      xml = xml.replace('</Fields>\n<Indexes', '</Fields>\n<FullTextIndexes />\n<Indexes');
+    }
+
+    return xml;
+  }
+
   static sanitizeReportXml(xml: string): string {
     // 1. Ensure xmlns="Microsoft.Dynamics.AX.Metadata.V2" on <AxReport> opening tag
     if (!xml.includes('xmlns="Microsoft.Dynamics.AX.Metadata.V2"')) {
@@ -2633,6 +2673,11 @@ export async function handleCreateD365File(
         args.objectType === 'menu-item-action' ||
         args.objectType === 'menu-item-output') {
       xmlContent = XmlTemplateGenerator.sanitizeMenuItemXml(xmlContent);
+    }
+
+    // Sanitize table XML — ensures correct field element format required by D365FO deserializer.
+    if (args.objectType === 'table') {
+      xmlContent = XmlTemplateGenerator.sanitizeTableXml(xmlContent);
     }
 
     // Debug: Log XML content length
