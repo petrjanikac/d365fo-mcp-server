@@ -13,6 +13,42 @@ import { parseStringPromise, Builder } from 'xml2js';
 import { getConfigManager } from '../utils/configManager.js';
 import { PackageResolver } from '../utils/packageResolver.js';
 
+/**
+ * Re-wrap a specific XML element's text content in <![CDATA[...]]>.
+ *
+ * xml2js strips CDATA wrappers when parsing and entity-encodes < > & when
+ * rebuilding. D365FO requires CDATA for <Declaration> and <Source> blocks, and
+ * X++ code may contain characters that must not be entity-encoded (e.g.
+ * `/// <summary>` doc comments, generic type parameters like `List<str>`).
+ *
+ * This function decodes entity-encoded characters and re-wraps the content in
+ * a CDATA section so the output file matches the D365FO XML convention.
+ */
+export function rewrapXmlTagAsCdata(tag: string, xml: string): string {
+  return xml.replace(
+    new RegExp(`<${tag}>([\\s\\S]*?)<\\/${tag}>`, 'g'),
+    (_match, innerRaw: string) => {
+      // Already CDATA-wrapped — leave as-is (idempotency)
+      if (innerRaw.trimStart().startsWith('<![CDATA[')) {
+        return _match;
+      }
+      // Decode XML entities introduced by the xml2js Builder
+      const decoded = innerRaw
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&amp;/g, '&')
+        .replace(/&apos;/g, "'")
+        .replace(/&quot;/g, '"');
+      // Normalise: strip leading/trailing newlines
+      const content = decoded.replace(/^\n+/, '').replace(/\n+$/, '');
+      // D365FO convention: <![CDATA[\n...content...\n\n]]>
+      // - One newline after opening <![CDATA[
+      // - TWO newlines before closing ]]> (creates blank line before ]]>)
+      return `<${tag}><![CDATA[\n${content}\n\n]]></${tag}>`;
+    }
+  );
+}
+
 const ModifyD365FileArgsSchema = z.object({
   objectType: z.enum([
     'class', 'table', 'form', 'enum', 'query', 'view', 'edt', 'data-entity', 'report',
@@ -129,7 +165,12 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
       if (readError instanceof SyntaxError || (readError instanceof Error && readError.message.includes('sourcePath'))) {
         throw readError;
       }
-      throw new Error(`Cannot read file: ${filePath}`);
+      const isRelative = !path.isAbsolute(filePath);
+      const hint = isRelative
+        ? ' The path is relative — the symbol DB returned a build-agent path. ' +
+          'Pass filePath="<absolute path>" or modelName="<YourModel>" so the tool can locate the file on disk.'
+        : '';
+      throw new Error(`Cannot read file: ${filePath}${hint}`);
     }
 
     // 3. Create backup of the actual XML file
@@ -197,10 +238,21 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
       renderOpts: { pretty: true, indent: '\t', newline: '\n' },
       headless: false,
     });
-    
-    // Add blank line between <Method> elements — xml2js Builder doesn't insert them.
-    const newXml = builder.buildObject(xmlObj)
-      .replace(/<\/Method>\n(\t*)<Method>/g, '</Method>\n\n$1<Method>');
+
+    let newXml = builder.buildObject(xmlObj);
+
+    // ── Re-wrap <Declaration> and <Source> content in CDATA ─────────────────
+    // xml2js strips the <![CDATA[...]]> wrappers during parsing. When the Builder
+    // re-serialises the XML it:
+    //   1. Loses the CDATA wrapper (D365FO requires it for Source/Declaration blocks)
+    //   2. Entity-encodes < > & inside method/class source → breaks /// <summary> doc
+    //      comments (they become /// &lt;summary&gt;) and any generic types (List<str>)
+    //
+    // Fix: replace  <Tag>...content...</Tag>  with  <Tag><![CDATA[\n...decoded...\n]]></Tag>
+    // for all <Declaration> and <Source> elements. See rewrapXmlTagAsCdata() above.
+    newXml = rewrapXmlTagAsCdata('Declaration', newXml);
+    newXml = rewrapXmlTagAsCdata('Source', newXml);
+
     await fs.writeFile(actualFilePath, newXml, 'utf-8');
 
     // 6. Return success
@@ -279,8 +331,21 @@ async function findD365File(
       dbResult = row ? row.file_path : null;
     }
 
-    if (dbResult) {
-      return dbResult;
+    // Only trust the DB path when it is an absolute path that actually exists on disk.
+    // The DB file_path column stores paths from the CI build agent (e.g. C:\home\vsts\work\...)
+    // which are never accessible at runtime.  Relative paths (e.g. "fm-mcp/fm-mcp/AxClass/Foo.xml")
+    // also come from this source and cannot be used directly.
+    // Fall through to findD365FileOnDisk which builds the correct absolute path from config.
+    if (dbResult && path.isAbsolute(dbResult)) {
+      try {
+        await import('fs').then(m => m.promises.access(dbResult!));
+        return dbResult;
+      } catch {
+        // Absolute path from DB but not accessible — fall through to filesystem lookup
+        console.error(`[modifyD365File] DB path not accessible: ${dbResult} — falling back to filesystem lookup`);
+      }
+    } else if (dbResult) {
+      console.error(`[modifyD365File] DB returned relative path: ${dbResult} — falling back to filesystem lookup`);
     }
   }
 
