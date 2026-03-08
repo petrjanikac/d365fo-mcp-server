@@ -101,7 +101,7 @@ to CustTable in my MyPackage\MyModel model. Steps:
 9. `create_d365fo_file` — creates the `AxEnum` XML with value labels
 10. `create_d365fo_file` — creates the table extension `CustTable.MyModel_Extension` with the new field bound to the label
 11. `create_d365fo_file` — creates the empty form extension `CustTable.MyModel_Extension` (controls are added in the next step)
-12. `modify_d365fo_file` with `operation: add-control` — adds the `AslCustPriorityTier` field control inside the `TabGeneral` group in the form extension (no PowerShell needed)
+12. `modify_d365fo_file` with `operation: add-control` — adds the `MyCustPriorityTier` field control inside the `TabGeneral` group in the form extension (no PowerShell needed)
 13. `verify_d365fo_project` — confirms all objects (enum, table extension, form extension) are on disk and registered in the `.rnrproj`
 
 **Why this matters:** Calling `get_form_info` before touching the form extension — and using
@@ -124,23 +124,30 @@ Before I create security objects:
 1. Show me how the existing VendPaymTerms form is secured —
    which roles and duties already grant access
 2. Check if a privilege for VendPaymTerms maintenance already exists
-3. Validate that "MyModel_VendPaymTermsMaintain" is a valid privilege name
+3. Validate that "MY_VendPaymTermsMaintain" is a valid privilege name
    that won't clash with anything in the symbol index
 Then create the privilege, add it to the VendPaymentTermsMaintain duty,
 and verify the objects are in place.
 ```
 
 **Tools Copilot chains:**
-1. `get_security_coverage_for_object` — returns the full chain: form → menu items → privileges → duties → roles
-2. `search` with `objectType: SecurityPrivilege` — checks if a maintenance privilege already exists
-3. `validate_object_naming` — confirms `MyModel_VendPaymTermsMaintain` follows D365FO naming conventions and has no collision in 584K+ symbols
-4. `get_security_artifact_info` for the existing duty — reads its current privileges to understand what to add to
-5. `create_d365fo_file` — creates the privilege XML
-6. `modify_d365fo_file` — adds the privilege reference to the existing duty extension
-7. `verify_d365fo_project` — confirms both objects exist and are registered
+1. `get_workspace_info` ×2 — workspace config check (called twice: once at start, once after user fixed `.mcp.json` mid-session)
+2. `get_security_coverage_for_object` ×3 — full chain for `VendPaymTerms` form and `PaymTerm` menu item (form → menu items → privileges → duties → roles); repeated after each discovery round to confirm no `MY_` collision
+3. `search` + `batch_search` ×9 — parallel searches across name variants (`VendPaymTerms`, `VendPaymentTerms`, `PaymTerm*`, `MY_VendPaymTermsMaintain`) for privileges, duties, and menu items
+4. `get_menu_item_info` ×2 — `VendPaymTerms` menu item detail (target form, security chain); called again for display-type variant
+5. `get_security_artifact_info` ×8 — reads full entry lists for candidate duties: `VendPaymentTermsMaintain`, `VendPaymTermsMaintain`, `LedgerPaymTermsMaintain`, `PaymTermsMaintain`, `VendVendorMasterMaintain`, `VendInvoiceVendorMaintain`, and privileges `PaymTermMaintain`, `PaymTermView`
+6. `validate_object_naming` ×2 — confirms `MY_VendPaymTermsMaintain` follows D365FO conventions and has no collision in 584K+ symbols
+   (prefix separator `MY_` is valid — `{Prefix}_{Name}` is a supported D365FO naming pattern)  ✅
+7. `generate_code` — generates security-privilege XML skeleton for `VendPaymTerms`
+8. `search_labels` ×2 — label lookup for "vendor payment terms maintain" (with and without model filter)
+9. `create_d365fo_file` ×2 — creates `MY_VendPaymTermsMaintain` (`security-privilege`) and `MY_VendPaymentTermsMaintain` (`security-duty`)
+10. `verify_d365fo_project` — confirms both objects exist on disk and in `.rnrproj`  ✅
 
-**Why this matters:** Running `get_security_coverage_for_object` first often reveals that
-an existing privilege already grants exactly the right access — no new security object needed.
+**Why this matters:**
+- Running `get_security_coverage_for_object` first often reveals an existing privilege already grants the right access — no new security object needed.
+- The dense search phase (steps 3–6) reflects a real-world security audit: standard duties have overlapping names, and Copilot must exhaustively verify no collision exists before committing to a name.
+- `validate_object_naming` confirms the `{Prefix}_{Name}` underscore separator is valid and checks for symbol-index collisions.
+- `get_workspace_info` is called twice because the workspace `.mcp.json` had a placeholder model name that the user fixed mid-session.
 
 ---
 
@@ -168,17 +175,21 @@ for inventory revaluation. I've never worked with ledger journals before.
 ```
 
 **Tools Copilot chains:**
-1. `get_table_info` × 2 — reads `LedgerJournalTable` and `LedgerJournalTrans` fields, relations, and methods in parallel
-2. `search` — finds all usages of `LedgerJournalCheckPost` in the codebase
-3. `get_class_info` — reads the class methods and signatures for `LedgerJournalCheckPost`
-4. `search` — finds existing ledger journal creation code in `MyPackage`
-5. `get_table_info` — reads `InventTable` to find the dimension attribute field
-6. `batch_search` — fetches `DimensionAttributeValueSet`, `DimensionDefaultingEngine`, and `LedgerDimensionFacade` in parallel to understand dimension defaulting APIs
-7. `generate_code` — produces the service class with header creation, line creation, dimension defaulting, and posting
-8. `create_d365fo_file` — writes the class and registers it in the project
-9. `verify_d365fo_project` — confirms the file is on disk and in the project
+1. `get_workspace_info` — workspace config check, model and prefix detection
+2. `get_table_info` ×3 — `LedgerJournalTable`, `LedgerJournalTrans`, `InventTable` (fields, relations; `InventTable` specifically for `DefaultDimension` field)
+3. `get_api_usage_patterns` ×3 — typical call sequences for `LedgerJournalCheckPost`, `LedgerJournalEngine`, `DimensionAttributeValueSetStorage`; `DimensionDefaultingService` returned no results
+4. `analyze_code_patterns` ×2 — journal creation patterns in the codebase; dimension defaulting patterns from `InventTable.DefaultDimension` to `LedgerJournalTrans`
+5. `get_class_info` ×3 — full method overview for `LedgerJournalCheckPost`, `JournalTableData`, `JournalTransData`
+6. `get_method_signature` ×6 — exact signatures for: `LedgerJournalCheckPost.newLedgerJournalTable`, `.parmJournalNum`, `.processOperation`; `LedgerDimensionFacade.serviceCreateLedgerDimension`, `.createLedgerDimension`; `JournalTransData.create`; `JournalTableData.construct`; `AslBankSett_LedgerJournalTransAutoSettleService.run` (as a pattern reference)
+7. `get_class_info("LedgerDimensionFacade")` — dimension facade methods for merging ledger dimensions
+8. `search_extensions` ×4 — existing custom journal extensions and `Asl*` service class patterns; `AslBankSett_LedgerJournalTransAutoSettleService` found and studied as a structural template
+9. `search_labels` ×4 + `get_label_info` — label lookup for journal/adjustment/error strings; confirmed 4 existing labels in the model and available languages (en-US, cs, de)
+10. `batch_search` ×1 (3 parallel) — `JournalTableData`, `JournalTransData`, `InventItemSalesSetup DefaultDimension`
+11. `create_label` ×3 — `AslInventAdjItemNotFound`, `AslInventAdjMainAccountMissing`, `AslInventAdjPostFailed`
+12. `create_d365fo_file` — creates `AslLedgerInventAdjustmentService` class and registers it in the project
+13. `verify_d365fo_project` — confirms the file exists on disk and in `.rnrproj`  ✅
 
-**Why this matters:** Fetching `DimensionAttributeValueSet`, `DimensionDefaultingEngine`,
-and `LedgerDimensionFacade` in one batch call gives Copilot the full dimension API picture
-before generating code — otherwise it guesses at method signatures and produces code that
-does not compile.
+**Why this matters:**
+- `get_method_signature` is called 7× (steps 6–7) because Copilot must know the exact parameter order for `JournalTransData.create(doInsert, initVoucherList)` and `LedgerDimensionFacade.createLedgerDimension` before writing a single line of service code — guessing these produces uncompilable X++.
+- Studying an existing `Asl*` service class (`AslBankSett_LedgerJournalTransAutoSettleService`) via `get_class_info` + `get_method_signature` gives a proven structural template in the same model, avoiding the need to invent a pattern from scratch.
+- `search_labels` before `create_label` ensures no duplicate label IDs are created — the 4 found labels guided the naming of the 3 new ones.

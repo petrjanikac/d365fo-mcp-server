@@ -236,6 +236,14 @@ export class XmlTemplateGenerator {
         );
         return innerResult;
       }
+      // Normalise: ensure exactly one blank line before the closing '}'
+      // when the class body has content (e.g. member variable declarations).
+      // Fixes: "    VendGroupId vendGroupId;\n}" → "    VendGroupId vendGroupId;\n\n}"
+      const bodyStart = declaration.indexOf('{');
+      const bodyContent = declaration.substring(bodyStart + 1, declaration.lastIndexOf('}'));
+      if (bodyContent.trim().length > 0) {
+        declaration = declaration.replace(/\n+(\s*)}(\s*)$/, '\n\n}');
+      }
       return { declaration, methods: [] };
     }
 
@@ -2891,7 +2899,7 @@ export async function handleCreateD365File(
 
     // Case A: dot-notation extension elements (table/form/EDT/enum extensions)
     // e.g. "CustTable.MyModelExtension" with modelName="MyModel" → "CustTable.Extension"
-    // applyObjectPrefix then produces "CustTable.AslExtension"
+    // applyObjectPrefix then produces "CustTable.MyExtension"
     if (
       args.objectName.includes('.') &&
       args.objectName.toLowerCase().endsWith('extension') &&
