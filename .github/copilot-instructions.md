@@ -207,11 +207,11 @@ The `create_d365fo_file` tool derives the object name prefix from the `modelName
 3. Generate boilerplate:       generate_code("table-extension", "TargetTable_Extension",
                                  "TargetTable")
 
-4. Create extension file:      create_d365fo_file(objectType="tableExtension",
-                                 objectName="TargetTable_Extension", addToProject=true)
+4. Create extension file:      create_d365fo_file(objectType="table-extension",
+                                 objectName="TargetTable.PrefixExtension", addToProject=true)
 
-5. Add fields/methods:         modify_d365fo_file(objectType="tableExtension",
-                                 objectName="TargetTable_Extension",
+5. Add fields/methods:         modify_d365fo_file(objectType="table-extension",
+                                 objectName="TargetTable.PrefixExtension",
                                  operation="add-field" / "add-method", ...)
 ```
 

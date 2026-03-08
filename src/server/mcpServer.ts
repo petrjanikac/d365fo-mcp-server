@@ -534,10 +534,22 @@ WHAT IT DOES:
 - Generates proper XML structure with UTF-8 BOM encoding
 
 REQUIRED PARAMETERS:
-- objectType: class, table, enum, form, query, view, data-entity, report
+- objectType: NEW objects → class, table, enum, form, query, view, data-entity, report
+             EXTENSIONS → table-extension, form-extension, enum-extension, edt-extension,
+                          data-entity-extension, menu-item-display-extension,
+                          menu-item-action-extension, menu-item-output-extension, menu-extension
+  ⚠️ EXTENSION RULE: Extending an EXISTING standard object? ALWAYS use the -extension variant:
+     "table-extension" → AxTableExtension folder, objectName = "BaseTable.PrefixExtension"
+     "form-extension"  → AxFormExtension folder,  objectName = "BaseForm.PrefixExtension"
+     NEVER use objectType="table" to create a table extension — wrong folder, broken AOT!
 - objectName: Name of the new object (e.g., "ProcessOpenOrdersBatch" for batch job)
+  For extensions: "BaseElement.PrefixExtension" (e.g., "CustTable.ContosoExtension")
 - modelName: Any value (auto-corrected from .rnrproj)
 - addToProject: true (to automatically add to VS project)
+
+IF A FILE WAS CREATED WITH WRONG objectType (e.g. "table" instead of "table-extension"):
+❌ NEVER use PowerShell Move-Item / Rename-Item / Copy-Item to fix it
+✅ Call create_d365fo_file again with the CORRECT objectType and overwrite=true
 
 WORKFLOW:
 1. generate_code(pattern="batch-job", name="MyBatch") → Get X++ code
@@ -575,7 +587,12 @@ EXAMPLES:
             properties: {
               objectType: {
                 type: 'string',
-                enum: ['class', 'table', 'enum', 'form', 'query', 'view', 'data-entity', 'report'],
+                enum: [
+                  'class', 'table', 'enum', 'form', 'query', 'view', 'data-entity', 'report',
+                  'table-extension', 'form-extension', 'enum-extension', 'edt-extension',
+                  'data-entity-extension', 'menu-item-display-extension',
+                  'menu-item-action-extension', 'menu-item-output-extension', 'menu-extension'
+                ],
                 description: 'Type of D365FO object to create'
               },
               objectName: {
@@ -643,7 +660,11 @@ EXAMPLES:
             properties: {
               objectType: {
                 type: 'string',
-                enum: ['class', 'table', 'enum', 'form', 'query', 'view', 'data-entity', 'report'],
+                enum: [
+                  'class', 'table', 'enum', 'form', 'query', 'view', 'data-entity', 'report',
+                  'table-extension', 'form-extension', 'enum-extension', 'edt-extension',
+                  'data-entity-extension'
+                ],
                 description: 'Type of D365FO object to generate'
               },
               objectName: {
