@@ -97,7 +97,7 @@ For any D365FO request, **start with MCP tools — never** `code_search`, `grep_
 | Request | MCP Tools |
 |---------|-----------|
 | Fix bug / review | `get_class_info` → `suggest_method_implementation` → `find_references` |
-| Refactor / improve | `get_class_info` → `analyze_class_completeness` → `analyze_code_patterns` |
+| Refactor / improve | See **Refactoring Workflow** section below |
 | Find best practice | `analyze_code_patterns` → `get_api_usage_patterns` |
 | Optimize query | `get_table_info` → `analyze_code_patterns` |
 | Where is X used? | `find_references(targetName)` |
@@ -210,6 +210,47 @@ The `create_d365fo_file` tool derives the object name prefix from the `modelName
 - Double-prefix is prevented automatically: `objectName="ContosoExtInventoryByZones"` + `modelName="ContosoExt"` → tool detects prefix already present → uses name as-is
 - ❌ NEVER write XML files directly with `create_file` or PowerShell because you think the prefix logic is wrong
 - ❌ NEVER edit .rnrproj manually — `create_d365fo_file` with `addToProject=true` handles it
+
+---
+
+## Refactoring Workflow
+
+When the user asks to **refactor**, **improve**, **clean up**, **optimize**, or **review** an existing class or method — NEVER use `read_file`, `get_file`, `code_search`, or `edit_file`. Use only MCP tools.
+
+```
+1. Read class structure:   get_class_info("ClassName")
+                           → returns all method signatures, inheritance, model
+                           → compact=true (default) — signatures only, fast
+                           → compact=false — only if you need to read bodies
+
+2. Find completeness gaps: analyze_class_completeness("ClassName")
+                           → reports missing standard methods (find, exist, etc.)
+                           → flags methods that should be static, etc.
+
+3. Find real patterns:     analyze_code_patterns("scenario")
+                           → e.g. "validation", "query pattern", "error handling"
+                           → shows how standard D365FO code solves the same problem
+
+4. Read specific bodies:   get_method_signature("ClassName", "methodName")
+                           → use for EACH method you intend to change
+                           → NEVER guess the body from the signature
+
+5. Find usages:            find_references("ClassName")  or  find_references("methodName")
+                           → verify that renaming/changing a method won't break callers
+                           → call BEFORE removing or renaming anything
+
+6. Apply changes:          modify_d365fo_file(objectType="class", objectName="ClassName",
+                             operation="add-method" / "remove-method", sourceCode="...")
+                           ❌ NEVER use edit_file, apply_patch, replace_string_in_file
+```
+
+**Rules for refactoring:**
+- ALWAYS read the full class first with `get_class_info` — never assume you know the current structure
+- ALWAYS call `get_method_signature` for every method you plan to change — don't edit blindly
+- ALWAYS call `find_references` before renaming a public method — it may be called from other classes/forms
+- NEVER delete a method without checking `find_references` first
+- Labels: if you rename or add `Info()`/`warning()`/`error()` messages, use `search_labels()` + `create_label()`
+- Doc comments: every changed public/protected method MUST have a meaningful `/// <summary>`
 
 ---
 

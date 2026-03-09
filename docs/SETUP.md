@@ -48,17 +48,23 @@ If you are responsible for deploying the server infrastructure to Azure, see [SE
 
 ## Step 2 — Place copilot-instructions.md
 
-Copy the file `.github/copilot-instructions.md` from this repository into the root of your
-D365FO solution workspace (same folder as your `.sln` file):
+Copy the `.github` folder from this repository into a **common parent directory** that contains
+all your D365FO solutions. Visual Studio 2022 automatically searches upward from the solution
+folder, so one copy covers every solution underneath — no need to repeat it per solution.
 
 ```
-K:\VSProjects\MySolution\
-├── .mcp.json                      ← config file (created in Step 3)
+C:\source\repos\                   ← parent folder (common ancestor of all solutions)
 ├── .github\
-│   └── copilot-instructions.md   ← copy here from this repo
-├── MySolution.sln
-└── MyProject\
-    └── MyProject.rnrproj
+│   └── copilot-instructions.md   ← copy here once — applies to all solutions below
+├── MySolution1\
+│   └── MySolution1.sln
+└── MySolution2\
+    └── MySolution2.sln
+```
+
+```powershell
+# Example — adjust the destination to match your actual parent folder
+Copy-Item -Path ".github" -Destination "C:\source\repos\" -Recurse
 ```
 
 GitHub Copilot automatically picks up `copilot-instructions.md` and uses it to give
@@ -326,8 +332,13 @@ want to maintain per-solution files.
 - Confirm Visual Studio version is 17.14 or later
 - Confirm *Editor Preview Features* are enabled at https://github.com/settings/copilot/features
 - Confirm Copilot Chat is in **Agent Mode** (not Ask or Edit)
-- Confirm `.mcp.json` is in the solution root (same folder as the `.sln` file)
+- Confirm `.mcp.json` is in the solution root or user home directory (`%USERPROFILE%\.mcp.json`)
 - Restart Visual Studio after creating or editing `.mcp.json`
+
+### Copilot ignores MCP tools and uses built-in file search instead
+- Confirm `.github\copilot-instructions.md` exists somewhere in the directory tree above your solution
+- Visual Studio 2022 searches upward from the solution folder — place it in a common parent (e.g. `C:\source\repos\.github\`) to cover all solutions at once
+- Confirm Visual Studio version supports custom instructions (17.11 or later)
 
 ### File created in wrong D365FO model
 Use the two-level `workspacePath` format: `PackagesLocalDirectory\YourPackageName\YourModelName`.

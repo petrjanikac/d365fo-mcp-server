@@ -81,8 +81,11 @@ npm run dev                      # Server at http://localhost:3000
 **4.** Copy the Copilot instruction files so Copilot knows the D365FO workflow rules:
 
 ```powershell
-Copy-Item -Path ".github" -Destination "C:\Path\To\YourSolution\" -Recurse
+# Place .github in a parent folder shared by all your D365FO solutions, e.g.:
+Copy-Item -Path ".github" -Destination "C:\source\repos\" -Recurse
 ```
+
+> **Tip:** Visual Studio 2022 searches for `.github\copilot-instructions.md` upward from the solution folder, so one copy in a common parent directory covers all solutions underneath — no need to copy it into every solution separately.
 
 > **Full config options** (UDE paths, explicit projectPath, solutionPath): [docs/MCP_CONFIG.md](docs/MCP_CONFIG.md)
 
