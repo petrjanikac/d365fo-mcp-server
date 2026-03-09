@@ -172,21 +172,37 @@ class ConfigManager {
   }
 
   /**
-   * Find .mcp.json file in current or parent directories, then user home directory
+   * Find .mcp.json file.
    * Priority:
-   * 1. Current directory and up to 5 parent directories (project-specific config)
-   * 2. User home directory (global config)
-   * 3. Current directory (fallback)
+   * 1. MCP_CONFIG_PATH env var (explicit override)
+   * 2. User home directory — single canonical config location (~/.mcp.json)
+   * 3. Current directory and up to 5 parent directories (project-specific override, rare)
+   * 4. Current directory fallback (file may not exist yet)
    */
   private findConfigFile(): string {
-    // Step 0: Explicit override via MCP_CONFIG_PATH env var
+    // Step 1: Explicit override via MCP_CONFIG_PATH env var
     const envConfigPath = process.env.MCP_CONFIG_PATH;
     if (envConfigPath && existsSync(envConfigPath)) {
       console.error(`[ConfigManager] Using MCP_CONFIG_PATH: ${envConfigPath}`);
       return envConfigPath;
     }
 
-    // Step 1: Search in current directory and parent directories
+    // Step 2: User home directory — primary location, use os.homedir() which is reliable
+    // even when USERPROFILE / HOME env vars are not set in the server process.
+    const homeDir = os.homedir();
+    if (homeDir) {
+      const homeConfigPath = path.join(homeDir, '.mcp.json');
+      try {
+        if (existsSync(homeConfigPath)) {
+          console.error(`[ConfigManager] Using config from home directory: ${homeConfigPath}`);
+          return homeConfigPath;
+        }
+      } catch {
+        // Continue searching
+      }
+    }
+
+    // Step 3: Search in current directory and parent directories (project-specific override)
     let currentDir = process.cwd();
     const maxDepth = 5;
     let depth = 0;
@@ -195,6 +211,7 @@ class ConfigManager {
       const configPath = path.join(currentDir, '.mcp.json');
       try {
         if (existsSync(configPath)) {
+          console.error(`[ConfigManager] Using project config: ${configPath}`);
           return configPath;
         }
       } catch {
@@ -209,22 +226,7 @@ class ConfigManager {
       depth++;
     }
 
-    // Step 2: User home directory — use os.homedir() which is reliable
-    // even when USERPROFILE / HOME env vars are not set in the server process.
-    const homeDir = os.homedir();
-    if (homeDir) {
-      const homeConfigPath = path.join(homeDir, '.mcp.json');
-      try {
-        if (existsSync(homeConfigPath)) {
-          console.error(`[ConfigManager] Using global config from home directory: ${homeConfigPath}`);
-          return homeConfigPath;
-        }
-      } catch {
-        // Continue to fallback
-      }
-    }
-
-    // Step 3: Fallback to current directory (file may not exist yet)
+    // Step 4: Fallback to current directory (file may not exist yet)
     return path.join(process.cwd(), '.mcp.json');
   }
 

@@ -273,9 +273,6 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
         const packagePath = configManager.getPackagePath() ?? null;
         const projectPath = await configManager.getProjectPath() ?? null;
         const envType = await configManager.getDevEnvironmentType();
-        // getRawAutoDetectedModelName() returns what was found in .rnrproj regardless of config.
-        // autoDetectProject() was already executed above (triggered by getProjectPath()), so this is free.
-        const rawDetectedModel = await configManager.getRawAutoDetectedModelName();
 
         // Prefix diagnostics
         const extensionPrefixEnv = process.env.EXTENSION_PREFIX?.trim() || null;
@@ -307,6 +304,9 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
         ];
 
         if (isPlaceholder) {
+          // Only scan .rnrproj files when model name looks like a placeholder — avoids
+          // misleading "no .rnrproj files found" warnings when config is fully set up.
+          const rawDetectedModel = await configManager.getRawAutoDetectedModelName();
           const detectedHint = rawDetectedModel
             ? `> ✅ Auto-detected from .rnrproj: **${rawDetectedModel}**\n` +
               `> Update your .mcp.json: set \`modelName\` to \`"${rawDetectedModel}"\``
