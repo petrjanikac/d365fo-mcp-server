@@ -158,9 +158,8 @@ stages:
               echo "  Destination: ${DEST_DIR}"
 
               mkdir -p "$TEMP_DIR" "$DEST_DIR"
-              azcopy copy "$SOURCE_URL" "$TEMP_DIR/" \
+              AZCOPY_CONCURRENCY_VALUE=64 azcopy copy "$SOURCE_URL" "$TEMP_DIR/" \
                 --recursive \
-                --parallel-level 64 \
                 --log-level WARNING
 
               # Move contents of standard/ up one level to match expected METADATA_PATH structure
