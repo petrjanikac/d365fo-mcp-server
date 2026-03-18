@@ -303,8 +303,9 @@ export function ensureXppDocComment(source: string): string {
   // Already documented?
   const firstNonEmpty = lines.find(l => l.trim().length > 0);
   if (firstNonEmpty?.trim().startsWith('///')) {
-    // Remove blank lines between /// doc-comment block and the next code line
-    return stripDocCommentGap(cleanSource);
+    // Remove blank lines between /// doc-comment block and the next code line,
+    // then normalise the /// block indentation to match the method signature.
+    return normalizeDocBlockIndent(stripDocCommentGap(cleanSource));
   }
 
   // Collect attribute lines before the signature (needed for class inference)
@@ -355,6 +356,40 @@ export function ensureXppDocComment(source: string): string {
   }
 
   return doc.join('\n') + '\n' + cleanSource;
+}
+
+/**
+ * Re-indent the leading /// doc-comment block so its indentation matches the
+ * first non-/// non-blank line (the attribute or method signature).
+ *
+ * An AI model may generate the /// block at column 0 while the signature is
+ * indented (or vice-versa).  This function normalises the mismatch so the
+ * first /// line always aligns with the rest of the method source.
+ */
+function normalizeDocBlockIndent(source: string): string {
+  const lines = source.split('\n');
+
+  // Detect the indentation of the first non-/// non-blank line (signature / attribute)
+  let sigIndent = '';
+  for (const line of lines) {
+    const t = line.trim();
+    if (!t || t.startsWith('///')) continue;
+    sigIndent = line.match(/^(\s*)/)?.[1] ?? '';
+    break;
+  }
+
+  // Re-indent every leading /// line to use sigIndent
+  const result: string[] = [];
+  let inLeadingDocBlock = true;
+  for (const line of lines) {
+    if (inLeadingDocBlock && line.trim().startsWith('///')) {
+      result.push(sigIndent + line.trim());
+    } else {
+      inLeadingDocBlock = false;
+      result.push(line);
+    }
+  }
+  return result.join('\n');
 }
 
 /**
