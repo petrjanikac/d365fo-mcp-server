@@ -873,7 +873,17 @@ async function addMethod(xmlObj: any, objectType: string, args: any): Promise<bo
     Source: [ensureXppDocComment(fullSource)],
   };
 
-  methodsNode[0].Method.push(newMethod);
+  // Replace existing method with same name instead of pushing a duplicate.
+  // X++ does not support method overloading/overriding at the XML level — two
+  // <Method> nodes with the same <Name> cause serialisation/compiler errors.
+  const existingIdx = methodsNode[0].Method.findIndex(
+    (m: any) => m.Name && m.Name[0] === methodName
+  );
+  if (existingIdx !== -1) {
+    methodsNode[0].Method[existingIdx] = newMethod;
+  } else {
+    methodsNode[0].Method.push(newMethod);
+  }
 
   return true;
 }
