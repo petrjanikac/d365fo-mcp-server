@@ -70,7 +70,7 @@ just ask in plain English.
 | **get_form_patterns** | Analyze datasource/control patterns for forms | "Find forms using CustTable" |
 | **generate_code** | Generate X++ boilerplate (class, batch job, CoC, etc.) | "Generate a batch job class for order processing" |
 
-### SDLC & Build Tools — LOCAL_TOOLS (5 tools - NEW)
+### SDLC & Build Tools — LOCAL_TOOLS (6 tools - NEW)
 
 The following tools empower Copilot to trigger X++ compilation, testing, and db syncing:
 
@@ -80,10 +80,7 @@ The following tools empower Copilot to trigger X++ compilation, testing, and db 
 | **build_d365fo_project** | Triggers an MSBuild process on the project to catch compiler errors | "Build my project and show me the errors" |
 | **trigger_db_sync** | Runs a database sync for the given table or the whole model | "Sync the database to reflect my table changes" |
 | **run_bp_check** | Runs the best practice linter on the code | "Run best practice checks on my latest changes" |
-| **run_systest** | Runs unit tests using SysTestRunner | "Run the unit tests in my project" |
-
-| **undo_last_modification** | Undoes the last uncommitted modification or file creation via git | "Undo the changes I just made to CustTable.xml" |
-
+| **run_systest_class** | Invokes D365FO SysTest framework against a specific test class | "Run the unit tests in MyTestClass" |
 | **undo_last_modification** | Undoes the last uncommitted modification or file creation via git | "Undo the changes I just made to CustTable.xml" |
 
 ### File Operations — LOCAL_TOOLS (4 tools)
