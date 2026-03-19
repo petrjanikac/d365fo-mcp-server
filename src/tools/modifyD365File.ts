@@ -247,6 +247,11 @@ const ModifyD365FileArgsSchema = z.object({
   
   // Options
   createBackup: z.boolean().optional().default(false).describe('Create backup before modification (default: false)'),
+  dryRun: z.boolean().optional().default(false).describe(
+    'When true, computes the change and returns a unified diff preview WITHOUT writing to disk. ' +
+    'Use this to show the user exactly what will be modified before applying. ' +
+    'Call again with dryRun=false (or omit it) to apply the changes.'
+  ),
   modelName: z.string().optional().describe('Model name (auto-detected if not provided). Pass this if the file was just created and is not yet indexed.'),
   packageName: z.string().optional().describe('Package name. Auto-resolved if omitted.'),
   workspacePath: z.string().optional().describe('Path to workspace for finding file'),
@@ -255,6 +260,125 @@ const ModifyD365FileArgsSchema = z.object({
     '(e.g. from create_d365fo_file output). Bypasses symbol DB lookup entirely.'
   ),
 });
+
+/**
+ * Generate a unified-diff preview between two XML strings.
+ *
+ * The algorithm locates hunks of changed lines by computing a simple
+ * longest-common-subsequence (LCS) at the line level.  For typical D365FO
+ * modifications (inserting a method block, adding a field, changing a
+ * property) the hunk set is small and the output is easy to read.
+ */
+function generateUnifiedDiff(original: string, modified: string, contextLines = 4): string {
+  if (original === modified) return '(no changes detected)';
+
+  const origLines = original.split('\n');
+  const modLines  = modified.split('\n');
+
+  // --- LCS table (space-optimised: only two rows needed) ---
+  const m = origLines.length;
+  const n = modLines.length;
+
+  // lcsMemo[i][j] = LCS length for origLines[0..i-1] vs modLines[0..j-1]
+  // We keep the full table so we can back-track the edit script.
+  const dp: number[][] = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      dp[i][j] = origLines[i - 1] === modLines[j - 1]
+        ? dp[i - 1][j - 1] + 1
+        : Math.max(dp[i - 1][j], dp[i][j - 1]);
+    }
+  }
+
+  // Back-track to produce an edit script: each entry is [tag, line]
+  // tag: '=' keep, '-' delete, '+' insert
+  type EditEntry = ['=' | '-' | '+', string];
+  const edits: EditEntry[] = [];
+  let i = m, j = n;
+  while (i > 0 || j > 0) {
+    if (i > 0 && j > 0 && origLines[i - 1] === modLines[j - 1]) {
+      edits.push(['=', origLines[i - 1]]);
+      i--; j--;
+    } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
+      edits.push(['+', modLines[j - 1]]);
+      j--;
+    } else {
+      edits.push(['-', origLines[i - 1]]);
+      i--;
+    }
+  }
+  edits.reverse();
+
+  // --- Group edits into hunks with context ---
+  // A hunk is a maximal run of non-'=' lines, padded by contextLines '=' on each side.
+  const hunks: string[] = [];
+  let eIdx = 0;
+  let origLine = 1; // 1-based line counter in original
+  let modLine  = 1; // 1-based line counter in modified
+
+  while (eIdx < edits.length) {
+    // Skip unchanged lines until we find a change
+    if (edits[eIdx][0] === '=') {
+      origLine++;
+      modLine++;
+      eIdx++;
+      continue;
+    }
+
+    // We're at a change — collect context before it
+    const hunkStart = eIdx;
+    // Find end of this cluster of changes
+    let hunkEnd = eIdx;
+    while (hunkEnd < edits.length && edits[hunkEnd][0] !== '=') hunkEnd++;
+    // Extend hunkEnd to absorb context (skip over short '=' gaps between changes)
+    let look = hunkEnd;
+    while (look < edits.length) {
+      // Count consecutive '=' lines
+      let eqCount = 0;
+      while (look + eqCount < edits.length && edits[look + eqCount][0] === '=') eqCount++;
+      if (eqCount === 0) { hunkEnd = look + 1; look++; continue; }  // another change
+      if (eqCount <= contextLines * 2) { look += eqCount; hunkEnd = look; continue; } // merge
+      break; // gap is large enough to split
+    }
+
+    // Collect context lines before this hunk
+    const preCtx: string[] = [];
+    for (let k = Math.min(contextLines, hunkStart); k > 0; k--) {
+      const e = edits[hunkStart - k];
+      if (e[0] === '=') preCtx.unshift(' ' + e[1]);
+    }
+
+    // Compute hunk header line numbers
+    // Recount from global origin because we need exact numbers
+    let hOrig = origLine - preCtx.length;
+    let hMod  = modLine - preCtx.length;
+
+    const hunkLines: string[] = [];
+    for (const l of preCtx) hunkLines.push(l);
+
+    for (let k = hunkStart; k < hunkEnd; k++) {
+      const [tag, line] = edits[k];
+      if (tag === '=') { hunkLines.push(' ' + line); origLine++; modLine++; }
+      else if (tag === '-') { hunkLines.push('-' + line); origLine++; }
+      else { hunkLines.push('+' + line); modLine++; }
+    }
+
+    // Context after
+    let postCtx = 0;
+    for (let k = hunkEnd; k < edits.length && postCtx < contextLines; k++) {
+      if (edits[k][0] === '=') { hunkLines.push(' ' + edits[k][1]); postCtx++; origLine++; modLine++; eIdx = k + 1; }
+      else break;
+    }
+    eIdx = Math.max(eIdx, hunkEnd);
+
+    const origCount = hunkLines.filter(l => l[0] !== '+').length;
+    const modCount  = hunkLines.filter(l => l[0] !== '-').length;
+    hunks.push(`@@ -${hOrig},${origCount} +${hMod},${modCount} @@`);
+    for (const l of hunkLines) hunks.push(l);
+  }
+
+  return hunks.length > 0 ? hunks.join('\n') : '(no changes detected)';
+}
 
 export async function modifyD365FileTool(request: CallToolRequest, context: XppServerContext) {
   try {
@@ -265,6 +389,7 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
       objectName,
       operation,
       createBackup,
+      dryRun,
       modelName,
       workspacePath,
       filePath: explicitFilePath,
@@ -312,8 +437,8 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
       throw new Error(`Cannot read file: ${filePath}${hint}`);
     }
 
-    // 3. Create backup of the actual XML file
-    if (createBackup) {
+    // 3. Create backup of the actual XML file (skip in dry-run — nothing is written)
+    if (createBackup && !dryRun) {
       await createFileBackup(actualFilePath);
     }
     const xmlObj = await parseStringPromise(xmlContent);
@@ -449,13 +574,35 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
     newXml = rewrapXmlTagAsCdata('Declaration', newXml);
     newXml = rewrapXmlTagAsCdata('Source', newXml);
 
+    // 6a. Dry-run: return a unified-diff preview without touching the file
+    if (dryRun) {
+      const diff = generateUnifiedDiff(xmlContent, newXml);
+      const opLabel = `${operation} on ${objectType} \`${objectName}\``;
+      return {
+        content: [
+          {
+            type: 'text',
+            text:
+              `## 🔍 Preview (dry-run) — změny NEBYLY aplikovány\n\n` +
+              `| Vlastnost | Hodnota |\n` +
+              `|---|---|\n` +
+              `| **Operace** | \`${opLabel}\` |\n` +
+              `| **Soubor** | \`${actualFilePath}\` |\n\n` +
+              `### Co se změní\n\n` +
+              `\`\`\`diff\n${diff}\n\`\`\`\n\n` +
+              `> ✅ Pro aplikování změn zavolejte znovu **bez** parametru \`dryRun\` (nebo s \`dryRun: false\`).`,
+          },
+        ],
+      };
+    }
+
     // Write file with UTF-8 BOM — required by D365FO metadata deserializer
     // (same as create_d365fo_file; omitting BOM causes "cannot open/deserialize" in VS)
     const utf8BOM = Buffer.from([0xEF, 0xBB, 0xBF]);
     const xmlBuffer = Buffer.concat([utf8BOM, Buffer.from(newXml, 'utf-8')]);
     await fs.writeFile(actualFilePath, xmlBuffer);
 
-    // 6. Return success
+    // 6b. Return success
     return {
       content: [
         {
