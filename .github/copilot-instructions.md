@@ -141,10 +141,17 @@ This workspace contains D365FO code. **Always use the specialized MCP tools** �
 > 1. get_class_info("MyClass")                       analyze (compact=true by default)
 > 2. get_method_source(class, method)               to read the full body
 >    get_method_signature(class, method)            only if you need exact signature for CoC
-> 3. modify_d365fo_file()                            apply
+> 3. modify_d365fo_file(..., dryRun=true)            preview — shows unified diff, NO write
+>    (show the diff to the user and ask for confirmation if the change is non-trivial)
+> 4. modify_d365fo_file(...)                         apply (omit dryRun, or set dryRun=false)
 >    NOT: replace_string_in_file                       FORBIDDEN
 >    NOT: PowerShell script                            FORBIDDEN
 > ```
+>
+> **`dryRun` usage rules:**
+> - Pass `dryRun=true` when the change affects multiple lines or a public API — always show the preview first.
+> - For trivial single-line changes (e.g. modify-property with a known value) `dryRun` is optional.
+> - Copilot must **never** apply the change automatically after a dry-run — wait for user confirmation.
 
 > ## ⚡ TOKEN BUDGET — READ BEFORE EVERY CALL
 >
@@ -342,6 +349,15 @@ When the user asks to **refactor**, **improve**, **clean up**, **optimize**, or 
 
 6. Apply changes:          modify_d365fo_file(objectType="class", objectName="ClassName",
                              operation="add-method" / "remove-method" / "replace-code", sourceCode="...")
+
+   **Preview first (dry-run):**
+   ```
+   modify_d365fo_file(objectType="class", objectName="MyClass",
+     operation="replace-code", ..., dryRun=true)
+   ```
+   → Returns a unified diff showing exactly what will change — file is NOT written.
+   → Show the diff to the user and ask for confirmation before applying.
+   → Call again WITHOUT dryRun (or dryRun=false) to apply.
 
    Replace one code snippet inside a method (surgical, preserves surrounding code):
    ```
