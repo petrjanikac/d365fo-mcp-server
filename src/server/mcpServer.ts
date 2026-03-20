@@ -2440,6 +2440,34 @@ Examples:
           required: ['filePath'],
         },
       },
+      {
+        name: 'get_xpp_knowledge',
+        description:
+          'Queryable knowledge base of D365FO X++ patterns, best practices, and AX2012→D365FO migration guidance. ' +
+          'Returns distilled, verified patterns with code examples. Use BEFORE generating code to avoid deprecated ' +
+          'APIs and AX2012 anti-patterns. Topics: batch jobs, transactions, queries, CoC/extensions, security, ' +
+          'data entities, temp tables, number sequences, form patterns, set-based operations, error handling, ' +
+          'SysOperation framework, and more.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            topic: {
+              type: 'string',
+              description:
+                'Topic to query — e.g. "batch job", "ttsbegin", "RunBase vs SysOperation", ' +
+                '"set-based operations", "CoC", "data entities", "number sequences", "security", ' +
+                '"temp tables", "today() deprecated", "query patterns", "form patterns"',
+            },
+            format: {
+              type: 'string',
+              enum: ['concise', 'detailed'],
+              default: 'concise',
+              description: 'concise = quick reference (default), detailed = full explanation with code examples',
+            },
+          },
+          required: ['topic'],
+        },
+      },
     ],
     };
 
