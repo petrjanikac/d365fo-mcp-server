@@ -28,7 +28,7 @@ function sleep(ms: number): Promise<void> {
 }
 
 function getLockDirectory(normalizedKey: string): string {
-  const hash = createHash('sha1').update(normalizedKey).digest('hex');
+  const hash = createHash('sha256').update(normalizedKey).digest('hex');
   return path.join(LOCK_ROOT, hash);
 }
 
