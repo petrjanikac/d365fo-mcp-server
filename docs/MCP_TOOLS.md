@@ -10,11 +10,13 @@ just ask in plain English.
 > CI) or the object is not found, the tools transparently fall back to the SQLite database.
 > Bridge-sourced results include a `_Source: C# bridge (IMetadataProvider)_` marker.
 >
-> **Write operations** are now fully bridged: 17 create types (class, table, enum, edt,
-> query, view, form, menu, 3 menu items, 3 security objects, 3 extension types) and **all 25
-> modify operations** use `IMetadataProvider.Create()` / `Update()` as the primary write path,
-> falling back to TypeScript XML generation only for complex types (report, data-entity) or
-> when the bridge is unavailable.
+> **Write operations** are now extensively bridged: 18 create types (class, class-extension,
+> table, enum, edt, query, view, form, menu, 3 menu items, 3 security objects,
+> table/form/enum-extension) and **23 of 25 modify operations** use
+> `IMetadataProvider.Create()` / `Update()` as the primary write path.
+> The 2 unbridged operations (`add-field-modification`, table-extension PropertyModifications)
+> and `dryRun=true` mode use xml2js. Complex create types (report, data-entity) also remain
+> in TypeScript XML generation. The bridge is Windows-only; Azure/Linux falls back to xml2js.
 > See [BRIDGE.md](BRIDGE.md) for details.
 
 ---

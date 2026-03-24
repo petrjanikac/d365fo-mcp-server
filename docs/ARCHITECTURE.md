@@ -120,7 +120,7 @@ sequenceDiagram
                 end
             end
         else Write Operation (create_d365fo_file, modify_d365fo_file)
-            Tool->>Bridge: bridge*() — 17 create types, all 25 modify ops
+            Tool->>Bridge: bridge*() — 18 create types, 23 of 25 modify ops
             alt Bridge Available & Type Supported
                 Bridge-->>Tool: Write Result (file path)
             else Bridge Unavailable or Unsupported Type
@@ -229,7 +229,7 @@ graph LR
 
     subgraph "C# Metadata Bridge — Windows only"
         BCLIENT[bridgeClient.ts - JSON-RPC child process]
-        BADAPT[bridgeAdapter.ts - 12 tryBridge* read + 11 bridge* write]
+        BADAPT[bridgeAdapter.ts - 12 tryBridge* read + 28 bridge* write]
         BTYPES[bridgeTypes.ts - Response types incl. BridgeWriteResult, BridgeDeleteResult, BridgeCapabilities]
     end
 
