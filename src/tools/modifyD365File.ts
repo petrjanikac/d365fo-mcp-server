@@ -14,6 +14,7 @@ import { parseStringPromise, Builder } from 'xml2js';
 import { getConfigManager } from '../utils/configManager.js';
 import { PackageResolver } from '../utils/packageResolver.js';
 import { resolveDbPathLocally } from '../utils/metadataResolver.js';
+import { bridgeValidateAfterWrite } from '../bridge/index.js';
 import { ProjectFileManager, ProjectFileFinder } from './createD365File.js';
 
 /**
@@ -747,6 +748,22 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
     const xmlBuffer = Buffer.concat([utf8BOM, Buffer.from(newXml, 'utf-8')]);
     await fs.writeFile(actualFilePath, xmlBuffer);
 
+    // 6a2. Post-write validation via C# bridge (best-effort)
+    let bridgeValidation = '';
+    try {
+      const validationMsg = await bridgeValidateAfterWrite(
+        context.bridge,
+        objectType,
+        objectName,
+      );
+      if (validationMsg) {
+        bridgeValidation = `\n${validationMsg}`;
+        console.error(`[modify_d365fo_file] Bridge validation: ${validationMsg}`);
+      }
+    } catch (e) {
+      console.error(`[modify_d365fo_file] Bridge validation skipped: ${e}`);
+    }
+
     // 6b. Optionally add the file to the Visual Studio project
     let projectMessage = '';
     if (args.addToProject) {
@@ -795,7 +812,7 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
           type: 'text',
           text:
             `✅ ${message}\n\n` +
-            `**File:** ${actualFilePath}${addControlNote}${projectMessage}\n\n` +
+            `**File:** ${actualFilePath}${addControlNote}${bridgeValidation}${projectMessage}\n\n` +
             `### Applied changes\n\n` +
             `\`\`\`diff\n${appliedDiff}\n\`\`\`\n\n` +
             `**Next steps:**\n- Review changes in Visual Studio\n- Build the model to validate\n- Commit changes to source control`,

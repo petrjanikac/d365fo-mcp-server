@@ -308,3 +308,30 @@ export interface BridgeListResult {
   count: number;
   names: string[];
 }
+
+// ===========================
+// Write-support types (Phase 3)
+// ===========================
+
+export interface BridgeValidateResult {
+  valid: boolean;
+  reason?: string;
+  objectType?: string;
+  objectName?: string;
+  fieldCount?: number;
+  methodCount?: number;
+  indexCount?: number;
+  valueCount?: number;
+}
+
+export interface BridgeResolveResult {
+  exists: boolean;
+  objectType: string;
+  objectName: string;
+  model?: string;
+}
+
+export interface BridgeRefreshResult {
+  refreshed: boolean;
+  elapsedMs: number;
+}

@@ -31,4 +31,7 @@ export {
   tryBridgeView,
   tryBridgeDataEntity,
   tryBridgeReport,
+  bridgeRefreshProvider,
+  bridgeValidateAfterWrite,
+  bridgeResolveObject,
 } from './bridgeAdapter.js';

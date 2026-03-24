@@ -4,6 +4,7 @@ import path from 'path';
 import { XppMetadataParser } from '../metadata/xmlParser.js';
 import type { XppServerContext } from '../types/context.js';
 import type { XppSymbol } from '../metadata/types.js';
+import { bridgeRefreshProvider } from '../bridge/index.js';
 
 export const updateSymbolIndexToolDefinition = {
   name: 'update_symbol_index',
@@ -74,6 +75,16 @@ export const updateSymbolIndexTool = async (params: any, context: XppServerConte
       .prepare(`DELETE FROM symbols WHERE file_path = ?`)
       .run(filePath);
     const deletedCount = deleted.changes;
+
+    // 1b. Refresh C# bridge metadata provider so it picks up the updated file
+    try {
+      const refreshResult = await bridgeRefreshProvider(context.bridge);
+      if (refreshResult) {
+        console.error(`[update_symbol_index] Bridge provider refreshed in ${refreshResult.elapsedMs}ms`);
+      }
+    } catch (e) {
+      console.error(`[update_symbol_index] Bridge refresh skipped: ${e}`);
+    }
 
     // 2. Re-parse the XML and insert fresh symbols
     let insertedCount = 0;

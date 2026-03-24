@@ -165,9 +165,37 @@ namespace D365MetadataBridge.Protocol
                                 "ping", "readTable", "readClass", "readEnum", "readEdt",
                                 "readForm", "readQuery", "readView", "readDataEntity",
                                 "readReport", "getMethodSource", "searchObjects",
-                                "listObjects", "findReferences", "getInfo"
+                                "listObjects", "findReferences", "getInfo",
+                                "validateObject", "resolveObjectInfo", "refreshProvider"
                             }
                         }));
+
+                    // === Write-support (validate / resolve / refresh) ===
+                    case "validateobject":
+                        return HandleMetadata(request, () =>
+                        {
+                            var objectType = request.GetStringParam("objectType")
+                                ?? throw new ArgumentException("Missing parameter: objectType");
+                            var objectName = request.GetStringParam("objectName")
+                                ?? throw new ArgumentException("Missing parameter: objectName");
+                            return _metadataService!.ValidateObject(objectType, objectName);
+                        });
+
+                    case "resolveobjectinfo":
+                        return HandleMetadata(request, () =>
+                        {
+                            var objectType = request.GetStringParam("objectType")
+                                ?? throw new ArgumentException("Missing parameter: objectType");
+                            var objectName = request.GetStringParam("objectName")
+                                ?? throw new ArgumentException("Missing parameter: objectName");
+                            return _metadataService!.ResolveObjectInfo(objectType, objectName);
+                        });
+
+                    case "refreshprovider":
+                        return HandleMetadata(request, () =>
+                        {
+                            return _metadataService!.RefreshProvider();
+                        });
 
                     default:
                         return Task.FromResult(

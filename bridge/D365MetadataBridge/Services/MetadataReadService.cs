@@ -14,14 +14,172 @@ namespace D365MetadataBridge.Services
     /// </summary>
     public class MetadataReadService
     {
-        private readonly IMetadataProvider _provider;
+        private IMetadataProvider _provider;
+        private readonly string _packagesPath;
 
         public MetadataReadService(string packagesPath)
         {
+            _packagesPath = packagesPath;
             // Use DiskProvider (standalone mode) — avoids .NET Framework EventDescriptor dependency
             var factory = new MetadataProviderFactory();
             _provider = factory.CreateDiskProvider(packagesPath);
             Console.Error.WriteLine($"[MetadataService] Initialized via DiskProvider: {packagesPath}");
+        }
+
+        // ========================
+        // WRITE-SUPPORT: Validate / Resolve / Refresh
+        // ========================
+
+        /// <summary>
+        /// Re-creates the DiskProvider so newly written files are picked up.
+        /// Call after create_d365fo_file or modify_d365fo_file writes to disk.
+        /// </summary>
+        public object RefreshProvider()
+        {
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            var factory = new MetadataProviderFactory();
+            _provider = factory.CreateDiskProvider(_packagesPath);
+            sw.Stop();
+            Console.Error.WriteLine($"[MetadataService] Provider refreshed in {sw.ElapsedMilliseconds}ms");
+            return new { refreshed = true, elapsedMs = sw.ElapsedMilliseconds };
+        }
+
+        /// <summary>
+        /// Asks IMetadataProvider to read back an object that was just written to disk.
+        /// Returns field/method counts and a success flag — proves the XML is well-formed
+        /// and the metadata API can consume it.
+        /// </summary>
+        public object? ValidateObject(string objectType, string objectName)
+        {
+            try
+            {
+                switch (objectType.ToLowerInvariant())
+                {
+                    case "table":
+                    case "table-extension":
+                        if (!_provider.Tables.Exists(objectName)) return new { valid = false, reason = $"Table '{objectName}' not found by IMetadataProvider after refresh" };
+                        var t = _provider.Tables.Read(objectName);
+                        return new { valid = true, objectType, objectName, fieldCount = t?.Fields?.Count ?? 0, methodCount = t?.Methods?.Count ?? 0, indexCount = t?.Indexes?.Count ?? 0 };
+
+                    case "class":
+                    case "class-extension":
+                        if (!_provider.Classes.Exists(objectName)) return new { valid = false, reason = $"Class '{objectName}' not found by IMetadataProvider after refresh" };
+                        var c = _provider.Classes.Read(objectName);
+                        return new { valid = true, objectType, objectName, fieldCount = 0, methodCount = c?.Methods?.Count ?? 0, indexCount = 0 };
+
+                    case "enum":
+                        if (!_provider.Enums.Exists(objectName)) return new { valid = false, reason = $"Enum '{objectName}' not found by IMetadataProvider after refresh" };
+                        var en = _provider.Enums.Read(objectName);
+                        int valueCount = 0;
+                        try { dynamic den = en; if (den?.Values != null) foreach (var _ in den.Values) valueCount++; } catch { }
+                        return new { valid = true, objectType, objectName, fieldCount = 0, methodCount = 0, valueCount, indexCount = 0 };
+
+                    case "edt":
+                        if (!_provider.Edts.Exists(objectName)) return new { valid = false, reason = $"EDT '{objectName}' not found by IMetadataProvider after refresh" };
+                        return new { valid = true, objectType, objectName };
+
+                    case "form":
+                    case "form-extension":
+                        if (!_provider.Forms.Exists(objectName)) return new { valid = false, reason = $"Form '{objectName}' not found by IMetadataProvider after refresh" };
+                        return new { valid = true, objectType, objectName };
+
+                    case "query":
+                        if (!_provider.Queries.Exists(objectName)) return new { valid = false, reason = $"Query '{objectName}' not found by IMetadataProvider after refresh" };
+                        return new { valid = true, objectType, objectName };
+
+                    case "report":
+                        if (!_provider.Reports.Exists(objectName)) return new { valid = false, reason = $"Report '{objectName}' not found by IMetadataProvider after refresh" };
+                        return new { valid = true, objectType, objectName };
+
+                    default:
+                        return new { valid = false, reason = $"Unsupported objectType for validation: {objectType}" };
+                }
+            }
+            catch (Exception ex)
+            {
+                return new { valid = false, reason = $"IMetadataProvider threw an exception reading {objectType}/{objectName}: {ex.Message}" };
+            }
+        }
+
+        /// <summary>
+        /// Uses IMetadataProvider to check if a given object name exists, and returns
+        /// the model name it belongs to. Useful for modify_d365fo_file to locate objects
+        /// without depending on the SQLite index.
+        /// </summary>
+        public object? ResolveObjectInfo(string objectType, string objectName)
+        {
+            try
+            {
+                switch (objectType.ToLowerInvariant())
+                {
+                    case "table":
+                    case "table-extension":
+                    {
+                        if (!_provider.Tables.Exists(objectName)) return null;
+                        string? model = null;
+                        try { var mi = _provider.Tables.GetModelInfo(objectName); if (mi?.Count > 0) model = mi.First().Name; } catch { }
+                        return new { exists = true, objectType, objectName, model };
+                    }
+                    case "class":
+                    case "class-extension":
+                    {
+                        if (!_provider.Classes.Exists(objectName)) return null;
+                        string? model = null;
+                        try { var mi = _provider.Classes.GetModelInfo(objectName); if (mi?.Count > 0) model = mi.First().Name; } catch { }
+                        return new { exists = true, objectType, objectName, model };
+                    }
+                    case "enum":
+                    {
+                        if (!_provider.Enums.Exists(objectName)) return null;
+                        string? model = null;
+                        try { var mi = _provider.Enums.GetModelInfo(objectName); if (mi?.Count > 0) model = mi.First().Name; } catch { }
+                        return new { exists = true, objectType, objectName, model };
+                    }
+                    case "edt":
+                    {
+                        if (!_provider.Edts.Exists(objectName)) return null;
+                        string? model = null;
+                        try { var mi = _provider.Edts.GetModelInfo(objectName); if (mi?.Count > 0) model = mi.First().Name; } catch { }
+                        return new { exists = true, objectType, objectName, model };
+                    }
+                    case "form":
+                    case "form-extension":
+                    {
+                        if (!_provider.Forms.Exists(objectName)) return null;
+                        string? model = null;
+                        try { var mi = _provider.Forms.GetModelInfo(objectName); if (mi?.Count > 0) model = mi.First().Name; } catch { }
+                        return new { exists = true, objectType, objectName, model };
+                    }
+                    case "query":
+                    {
+                        if (!_provider.Queries.Exists(objectName)) return null;
+                        string? model = null;
+                        try { var mi = _provider.Queries.GetModelInfo(objectName); if (mi?.Count > 0) model = mi.First().Name; } catch { }
+                        return new { exists = true, objectType, objectName, model };
+                    }
+                    case "view":
+                    {
+                        if (!_provider.Views.Exists(objectName)) return null;
+                        string? model = null;
+                        try { var mi = _provider.Views.GetModelInfo(objectName); if (mi?.Count > 0) model = mi.First().Name; } catch { }
+                        return new { exists = true, objectType, objectName, model };
+                    }
+                    case "report":
+                    {
+                        if (!_provider.Reports.Exists(objectName)) return null;
+                        string? model = null;
+                        try { var mi = _provider.Reports.GetModelInfo(objectName); if (mi?.Count > 0) model = mi.First().Name; } catch { }
+                        return new { exists = true, objectType, objectName, model };
+                    }
+                    default:
+                        return null;
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"[WARN] ResolveObjectInfo({objectType}, {objectName}): {ex.Message}");
+                return null;
+            }
         }
 
         // ========================

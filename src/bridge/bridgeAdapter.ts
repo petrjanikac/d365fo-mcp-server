@@ -563,3 +563,75 @@ function formatReport(r: BridgeReportInfo): string {
 
   return out;
 }
+
+// ============================================================
+// Write-support adapters (Phase 3)
+// ============================================================
+
+/**
+ * Refreshes the C# DiskProvider so it picks up newly written/modified files.
+ * Returns elapsed time in ms, or null if bridge is unavailable.
+ */
+export async function bridgeRefreshProvider(
+  bridge: BridgeClient | undefined,
+): Promise<{ refreshed: boolean; elapsedMs: number } | null> {
+  if (!bridge?.isReady || !bridge.metadataAvailable) return null;
+  try {
+    return await bridge.refreshProvider();
+  } catch (e) {
+    console.error(`[BridgeAdapter] refreshProvider failed: ${e}`);
+    return null;
+  }
+}
+
+/**
+ * Validates a just-written D365FO object by asking IMetadataProvider to read it back.
+ * Automatically refreshes the provider first so the new file is visible.
+ * Returns a validation summary or null if bridge is unavailable.
+ */
+export async function bridgeValidateAfterWrite(
+  bridge: BridgeClient | undefined,
+  objectType: string,
+  objectName: string,
+): Promise<string | null> {
+  if (!bridge?.isReady || !bridge.metadataAvailable) return null;
+  try {
+    // Refresh so DiskProvider sees the new/modified file
+    await bridge.refreshProvider();
+    const result = await bridge.validateObject(objectType, objectName);
+    if (!result) return null;
+
+    if (result.valid) {
+      const parts = [`✅ **IMetadataProvider validation passed** for \`${objectName}\``];
+      if (result.fieldCount != null && result.fieldCount > 0) parts.push(`${result.fieldCount} fields`);
+      if (result.methodCount != null && result.methodCount > 0) parts.push(`${result.methodCount} methods`);
+      if (result.indexCount != null && result.indexCount > 0) parts.push(`${result.indexCount} indexes`);
+      if (result.valueCount != null && result.valueCount > 0) parts.push(`${result.valueCount} values`);
+      return parts.join(' | ');
+    } else {
+      return `⚠️ **IMetadataProvider could not read back \`${objectName}\`**: ${result.reason ?? 'unknown error'}`;
+    }
+  } catch (e) {
+    console.error(`[BridgeAdapter] validateAfterWrite(${objectType}, ${objectName}) failed: ${e}`);
+    return null; // non-fatal — bridge validation is best-effort
+  }
+}
+
+/**
+ * Resolves object existence and model via IMetadataProvider.
+ * Used by modify_d365fo_file to locate objects without the SQLite index.
+ * Returns { exists, objectType, objectName, model } or null.
+ */
+export async function bridgeResolveObject(
+  bridge: BridgeClient | undefined,
+  objectType: string,
+  objectName: string,
+): Promise<{ exists: boolean; objectType: string; objectName: string; model?: string } | null> {
+  if (!bridge?.isReady || !bridge.metadataAvailable) return null;
+  try {
+    return await bridge.resolveObjectInfo(objectType, objectName);
+  } catch (e) {
+    console.error(`[BridgeAdapter] resolveObjectInfo(${objectType}, ${objectName}) failed: ${e}`);
+    return null;
+  }
+}

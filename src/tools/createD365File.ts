@@ -13,6 +13,7 @@ import { registerCustomModel, resolveObjectPrefix, applyObjectPrefix } from '../
 import { PackageResolver } from '../utils/packageResolver.js';
 import { ensureXppDocComment, ensureBlankLineBeforeClosingBrace } from '../utils/xppDocGen.js';
 import { decodeXmlEntitiesFromXppSource } from './modifyD365File.js';
+import { bridgeValidateAfterWrite } from '../bridge/index.js';
 
 /**
  * Per-project-file mutex to serialise concurrent addToProject calls.
@@ -3042,7 +3043,8 @@ export class ProjectFileManager {
  * Create D365FO file handler function
  */
 export async function handleCreateD365File(
-  request: CallToolRequest
+  request: CallToolRequest,
+  context?: { bridge?: import('../bridge/bridgeClient.js').BridgeClient },
 ): Promise<{ content: Array<{ type: string; text: string }>; isError?: boolean }> {
   const args = CreateD365FileArgsSchema.parse(request.params.arguments);
 
@@ -3591,6 +3593,22 @@ export async function handleCreateD365File(
       `[create_d365fo_file] ✅ Written: ${normalizedFullPath}  (${fileSizeKb} KB)`
     );
 
+    // Post-write validation via C# bridge (best-effort — non-fatal if bridge unavailable)
+    let bridgeValidation = '';
+    try {
+      const validationMsg = await bridgeValidateAfterWrite(
+        context?.bridge,
+        args.objectType,
+        finalObjectName,
+      );
+      if (validationMsg) {
+        bridgeValidation = `\n${validationMsg}\n`;
+        console.error(`[create_d365fo_file] Bridge validation: ${validationMsg}`);
+      }
+    } catch (e) {
+      console.error(`[create_d365fo_file] Bridge validation skipped: ${e}`);
+    }
+
     // Add to Visual Studio project if requested
     let projectMessage = '';
     if (args.addToProject) {
@@ -3703,6 +3721,7 @@ export async function handleCreateD365File(
             `📄 Object: ${finalObjectName}${finalObjectName !== args.objectName ? ` (prefixed from "${args.objectName}")` : ''}\n` +
             `📦 Model: ${actualModelName}\n` +
             `🔧 Type: ${objectFolder}\n` +
+            bridgeValidation +
             projectMessage +
             `\n${nextSteps}\n` +
             `⛔ TASK COMPLETE — do NOT call \`generate_smart_table\`, \`generate_smart_form\`, or \`create_d365fo_file\` again for this object.`,

@@ -35,6 +35,9 @@ import type {
   BridgeSearchResult,
   BridgeMethodSource,
   BridgeListResult,
+  BridgeValidateResult,
+  BridgeResolveResult,
+  BridgeRefreshResult,
 } from './bridgeTypes.js';
 
 // Re-export types for convenience
@@ -338,6 +341,25 @@ export class BridgeClient extends EventEmitter {
 
   async getInfo(): Promise<BridgeInfoPayload> {
     return this.call<BridgeInfoPayload>('getInfo');
+  }
+
+  // ========================================
+  // Write-support methods (Phase 3)
+  // ========================================
+
+  /** Re-create the DiskProvider so newly written files are picked up. */
+  async refreshProvider(): Promise<BridgeRefreshResult> {
+    return this.call<BridgeRefreshResult>('refreshProvider');
+  }
+
+  /** Ask IMetadataProvider to read back an object — validates the XML is consumable. */
+  async validateObject(objectType: string, objectName: string): Promise<BridgeValidateResult> {
+    return this.call<BridgeValidateResult>('validateObject', { objectType, objectName });
+  }
+
+  /** Check if an object exists in IMetadataProvider and return its model. */
+  async resolveObjectInfo(objectType: string, objectName: string): Promise<BridgeResolveResult | null> {
+    return this.call<BridgeResolveResult | null>('resolveObjectInfo', { objectType, objectName });
   }
 
   // ========================================
