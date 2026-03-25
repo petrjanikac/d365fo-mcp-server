@@ -53,6 +53,7 @@ import type {
   BridgeCompletionResult,
   BridgeExtensionClassResult,
   BridgeEventSubscriberResult,
+  BridgeApiUsageCallersResult,
 } from './bridgeTypes.js';
 
 // Re-export types for convenience
@@ -388,8 +389,21 @@ export class BridgeClient extends EventEmitter {
     return this.call<BridgeExtensionClassResult | null>('findExtensionClasses', { baseClassName });
   }
 
-  async findEventSubscribers(targetName: string): Promise<BridgeEventSubscriberResult | null> {
-    return this.call<BridgeEventSubscriberResult | null>('findEventSubscribers', { targetName });
+  async findEventSubscribers(
+    targetName: string,
+    eventName?: string,
+    handlerType?: string,
+  ): Promise<BridgeEventSubscriberResult | null> {
+    const params: Record<string, unknown> = { targetName };
+    if (eventName) params.eventName = eventName;
+    if (handlerType) params.handlerType = handlerType;
+    return this.call<BridgeEventSubscriberResult | null>('findEventSubscribers', params);
+  }
+
+  async findApiUsageCallers(apiName: string, limit?: number): Promise<BridgeApiUsageCallersResult | null> {
+    const params: Record<string, unknown> = { apiName };
+    if (limit) params.limit = limit;
+    return this.call<BridgeApiUsageCallersResult | null>('findApiUsageCallers', params);
   }
 
   async getInfo(): Promise<BridgeInfoPayload> {

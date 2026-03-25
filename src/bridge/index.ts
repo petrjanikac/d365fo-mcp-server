@@ -71,4 +71,5 @@ export {
   tryBridgeCompletion,
   tryBridgeCocExtensions,
   tryBridgeEventHandlers,
+  tryBridgeApiUsageCallers,
 } from './bridgeAdapter.js';

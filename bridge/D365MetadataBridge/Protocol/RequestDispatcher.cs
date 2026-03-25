@@ -225,7 +225,18 @@ namespace D365MetadataBridge.Protocol
                         {
                             var targetName = request.GetStringParam("targetName")
                                 ?? throw new ArgumentException("Missing parameter: targetName");
-                            return _xrefService!.FindEventSubscribers(targetName);
+                            var eventNameFilter = request.GetStringParam("eventName");
+                            var handlerTypeFilter = request.GetStringParam("handlerType");
+                            return _xrefService!.FindEventSubscribers(targetName, eventNameFilter, handlerTypeFilter);
+                        });
+
+                    case "findapiusagecallers":
+                        return HandleXref(request, () =>
+                        {
+                            var apiName = request.GetStringParam("apiName")
+                                ?? throw new ArgumentException("Missing parameter: apiName");
+                            var limit = request.GetIntParam("limit") ?? 200;
+                            return _xrefService!.FindApiUsageCallers(apiName, limit);
                         });
 
                     // === Delete ===
@@ -275,7 +286,8 @@ namespace D365MetadataBridge.Protocol
                                 "addEnumValue", "modifyEnumValue", "removeEnumValue",
                                 "addControl", "addDataSource",
                                 "setProperty", "replaceCode",
-                                "deleteObject", "getCapabilities", "discoverFormPatterns"
+                                "deleteObject", "getCapabilities", "discoverFormPatterns",
+                                "findExtensionClasses", "findEventSubscribers", "findApiUsageCallers"
                             }
                         }));
 
