@@ -203,8 +203,11 @@ export async function createLabelTool(request: CallToolRequest, context: XppServ
     try {
       const projPath = args.projectPath || await configManager.getProjectPath() || null;
       if (projPath) {
-        const baseName = path.basename(projPath);
-        projectName = baseName.replace(/\.rnrproj$/i, '');
+        // Use split on both separators for cross-platform safety (path.basename
+        // treats backslash as literal on POSIX, breaking Windows-style paths)
+        const segments = projPath.split(/[\\/]/);
+        const baseName = segments[segments.length - 1] || segments[segments.length - 2] || '';
+        projectName = baseName.replace(/\.rnrproj$/i, '') || null;
       }
     } catch { /* non-fatal */ }
     const effectiveDescription = description ?? projectName ?? labelFileId;
