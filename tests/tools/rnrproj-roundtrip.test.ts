@@ -24,23 +24,23 @@ const REAL_RNRPROJ = `<?xml version="1.0" encoding="utf-8"?>
     <Configuration Condition="'$(Configuration)' == ''">Debug</Configuration>
     <Platform Condition="'$(Platform)' == ''">AnyCPU</Platform>
     <OutputPath>bin\\</OutputPath>
-    <Model>AslCore</Model>
-    <Name>AslCore</Name>
+    <Model>ContosoCore</Model>
+    <Name>ContosoCore</Name>
   </PropertyGroup>
   <ItemGroup>
     <Folder Include="Classes\\" />
     <Folder Include="Tables\\" />
   </ItemGroup>
   <ItemGroup>
-    <Content Include="AxClass\\AslCoreHelper">
+    <Content Include="AxClass\\ContosoCoreHelper">
       <SubType>Content</SubType>
-      <Name>AslCoreHelper</Name>
-      <Link>Classes\\AslCoreHelper</Link>
+      <Name>ContosoCoreHelper</Name>
+      <Link>Classes\\ContosoCoreHelper</Link>
     </Content>
-    <Content Include="AxTable\\AslCoreTable">
+    <Content Include="AxTable\\ContosoCoreTable">
       <SubType>Content</SubType>
-      <Name>AslCoreTable</Name>
-      <Link>Tables\\AslCoreTable</Link>
+      <Name>ContosoCoreTable</Name>
+      <Link>Tables\\ContosoCoreTable</Link>
     </Content>
   </ItemGroup>
   <Import Project="$(MSBuildExtensionsPath)\\Microsoft\\Dynamics\\AX\\GenerateCode.targets" />
@@ -54,17 +54,17 @@ const SINGLE_CONTENT_RNRPROJ = `<?xml version="1.0" encoding="utf-8"?>
     <Configuration Condition="'$(Configuration)' == ''">Debug</Configuration>
     <Platform Condition="'$(Platform)' == ''">AnyCPU</Platform>
     <OutputPath>bin\\</OutputPath>
-    <Model>AslCore</Model>
-    <Name>AslCore</Name>
+    <Model>ContosoCore</Model>
+    <Name>ContosoCore</Name>
   </PropertyGroup>
   <ItemGroup>
     <Folder Include="Classes\\" />
   </ItemGroup>
   <ItemGroup>
-    <Content Include="AxClass\\AslCoreHelper">
+    <Content Include="AxClass\\ContosoCoreHelper">
       <SubType>Content</SubType>
-      <Name>AslCoreHelper</Name>
-      <Link>Classes\\AslCoreHelper</Link>
+      <Name>ContosoCoreHelper</Name>
+      <Link>Classes\\ContosoCoreHelper</Link>
     </Content>
   </ItemGroup>
   <Import Project="$(MSBuildExtensionsPath)\\Microsoft\\Dynamics\\AX\\GenerateCode.targets" />
@@ -75,8 +75,8 @@ const SINGLE_CONTENT_RNRPROJ = `<?xml version="1.0" encoding="utf-8"?>
 const EMPTY_PROJECT_RNRPROJ = `<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="14.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <PropertyGroup>
-    <Model>AslCore</Model>
-    <Name>AslCore</Name>
+    <Model>ContosoCore</Model>
+    <Name>ContosoCore</Name>
   </PropertyGroup>
   <Import Project="$(MSBuildExtensionsPath)\\Microsoft\\Dynamics\\AX\\GenerateCode.targets" />
   <Import Project="$(MSBuildExtensionsPath)\\Microsoft\\Dynamics\\AX\\Build.targets" />
@@ -173,7 +173,7 @@ describe('rnrproj xml2js roundtrip investigation', () => {
     console.log('Rebuilt with added Content:\n', rebuilt);
 
     // Both Content entries should be present
-    expect(rebuilt).toContain('AxClass\\AslCoreHelper');
+    expect(rebuilt).toContain('AxClass\\ContosoCoreHelper');
     expect(rebuilt).toContain('AxClass\\NewHelper');
   });
 
@@ -207,7 +207,7 @@ describe('rnrproj xml2js roundtrip investigation', () => {
     expect(rebuilt).toContain('>AnyCPU<');
 
     // Model name should be preserved
-    expect(rebuilt).toContain('<Model>AslCore</Model>');
+    expect(rebuilt).toContain('<Model>ContosoCore</Model>');
   });
 
   // ── BUG G: Import elements preservation ────────────────────────────────────
@@ -278,9 +278,9 @@ describe('rnrproj xml2js roundtrip investigation', () => {
     expect(rebuilt).toContain('</Project>');
     expect(rebuilt).toContain('<PropertyGroup>');
     expect(rebuilt).toContain('<ItemGroup>');
-    expect(rebuilt).toContain('AxClass\\AslCoreHelper');
-    expect(rebuilt).toContain('AxTable\\AslCoreTable');
-    expect(rebuilt).toContain('<Model>AslCore</Model>');
+    expect(rebuilt).toContain('AxClass\\ContosoCoreHelper');
+    expect(rebuilt).toContain('AxTable\\ContosoCoreTable');
+    expect(rebuilt).toContain('<Model>ContosoCore</Model>');
   });
 
   // ── BUG J: element order within ItemGroup after modification ───────────────
