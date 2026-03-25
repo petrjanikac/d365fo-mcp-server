@@ -66,8 +66,8 @@ const CreateLabelArgsSchema = z.object({
     .optional()
     .describe(
       'Label description written as the comment line in .label.txt. ' +
-      'Defaults to the model/project name when omitted. ' +
-      'Per-translation comment and defaultComment take priority over this.',
+      'Defaults to the VS project name (from .rnrproj) when omitted, ' +
+      'then falls back to labelFileId. Per-translation comment and defaultComment take priority over this.',
     ),
   defaultComment: z
     .string()
@@ -195,8 +195,22 @@ export async function createLabelTool(request: CallToolRequest, context: XppServ
       updateIndex,
     } = args;
 
-    // Description fallback: explicit description → model name
-    const effectiveDescription = description ?? model;
+    // Description fallback: explicit description → VS project name → labelFileId
+    // Model name is not useful here — it's typically identical to labelFileId.
+    const configManager = getConfigManager();
+    await configManager.ensureLoaded();
+    let projectName: string | null = null;
+    try {
+      const projPath = args.projectPath || await configManager.getProjectPath() || null;
+      if (projPath) {
+        // Use split on both separators for cross-platform safety (path.basename
+        // treats backslash as literal on POSIX, breaking Windows-style paths)
+        const segments = projPath.split(/[\\/]/);
+        const baseName = segments[segments.length - 1] || segments[segments.length - 2] || '';
+        projectName = baseName.replace(/\.rnrproj$/i, '') || null;
+      }
+    } catch { /* non-fatal */ }
+    const effectiveDescription = description ?? projectName ?? labelFileId;
     const { symbolIndex } = context;
 
     // 0. Cross-label-file collision check — warn when the same labelId exists in
@@ -239,8 +253,6 @@ export async function createLabelTool(request: CallToolRequest, context: XppServ
 
     // 1. Resolve model directory
     // Package name can differ from model name in any environment (not just UDE).
-    const configManager = getConfigManager();
-    await configManager.ensureLoaded();
     const envType = await configManager.getDevEnvironmentType();
 
     let resolvedPackagePath: string;
@@ -565,7 +577,7 @@ export const createLabelToolDefinition = {
       },
       description: {
         type: 'string',
-        description: 'Label description (comment line in .label.txt). Defaults to the model/project name when omitted. Per-translation comment and defaultComment take priority.',
+        description: 'Label description (comment line in .label.txt). Defaults to VS project name from .rnrproj when omitted, then falls back to labelFileId. Per-translation comment and defaultComment take priority.',
       },
       packagePath: {
         type: 'string',
