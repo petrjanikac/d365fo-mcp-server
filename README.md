@@ -6,7 +6,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D24.0.0-brightgreen.svg)](https://nodejs.org/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.9-blue.svg)](https://www.typescriptlang.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-6.0-blue.svg)](https://www.typescriptlang.org/)
 
 *Built for D365FO developers who write X++ in Visual Studio — not for generic web dev*
 
@@ -48,6 +48,8 @@ This MCP server solves that by pre-indexing your entire D365FO installation — 
 - **XML Parsing without Corruption:** Intelligently mutates AxTable and AxForm files locally avoiding the common string replacement corruption associated with VS agents.
 
 ## Quick Start
+
+> **Full step-by-step guide with all scenarios:** [docs/QUICK_START.md](docs/QUICK_START.md)
 
 **Prerequisites** — install required software via [d365fo.tools](https://github.com/d365collaborative/d365fo.tools):
 
@@ -142,7 +144,8 @@ Setup guide: [docs/SETUP.md](docs/SETUP.md) · CI/CD pipeline: [docs/PIPELINES.m
 
 | File | Contents |
 |------|---------|
-| [docs/SETUP.md](docs/SETUP.md) | Installation, configuration, Azure deployment |
+| [docs/QUICK_START.md](docs/QUICK_START.md) | **Start here** — 5 steps to get running, all `.mcp.json` parameters, logging |
+| [docs/SETUP.md](docs/SETUP.md) | Detailed installation, configuration, all deployment scenarios |
 | [docs/MCP_CONFIG.md](docs/MCP_CONFIG.md) | `.mcp.json` reference — workspace paths, UDE, project settings |
 | [docs/MCP_TOOLS.md](docs/MCP_TOOLS.md) | All 54 tools with parameters and example prompts |
 | [docs/USAGE_EXAMPLES.md](docs/USAGE_EXAMPLES.md) | Practical examples: search, CoC, SysOperation, security |
